@@ -1,7 +1,7 @@
 {
-  "name": "Dấu Chân Hồng",
-  "short_name": "Dấu Chân",
-  "description": "Ghi lại hành trình, check-in và kỉ niệm trên bản đồ thật.",
+  "name": "Our Journey",
+  "short_name": "Our Journey",
+  "description": "Bản đồ chữ S của hai đứa: check-in, nhật ký, album ảnh, dùng chung.",
   "lang": "vi",
   "start_url": "./",
   "scope": "./",

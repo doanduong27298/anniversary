@@ -1,5 +1,6 @@
-/* Dấu Chân Hồng — logic chính.
-   Quy hoạch: Bản đồ (ở đâu) · Nhật ký (khi nào) · Địa điểm (nơi nào đáng nhớ) · Dấu chân (đã đi bao nhiêu). */
+/* Our Journey — logic chính.
+   Quy hoạch: Bản đồ (ở đâu, kèm bộ lọc và danh sách) · Nhật ký (lịch theo ngày) · Album (ảnh) · Tổng kết (số liệu, dùng chung).
+   Nút + ở giữa là check-in một chạm. */
 (() => {
   'use strict';
 
@@ -61,12 +62,18 @@
     gpsWarn: false,
     tile: 'voyager',
     focusId: null,
-    diaryMode: 'timeline',
-    diaryReg: 'all',
-    diaryQuery: '',
-    placeCat: 'all',
-    placeQuery: '',
+    filter: 'all',        // bộ lọc địa điểm trên bản đồ
+    trail: true,          // hiện đường nối theo thời gian
+    replay: null,         // đang phát lại hành trình
+    scopeKey: '',         // vùng đang xem trên bản đồ
+    cal: null,            // { y, m, day } tháng/ngày đang xem trong Nhật ký
+    albumMode: 'month',
+    albumIds: [],
     placeSort: 'recent',
+    quick: null,          // thẻ check-in nhanh đang hiện
+    quickBusy: false,
+    pickDate: null,       // ngày định sẵn khi thêm kỉ niệm cho một ngày cũ
+    lb: null,
     draft: null,
     picking: false,
     sheetOpen: false,
@@ -119,6 +126,17 @@
     return m;
   };
   const centroid = list => [list.reduce((a, p) => a + p.lat, 0) / list.length, list.reduce((a, p) => a + p.lng, 0) / list.length];
+
+  /** Ghi/xoá một bản ghi trong máy và báo cho phần dùng chung gửi đi. */
+  async function saveRec(store, rec) {
+    if (store === 'journeys') rec.updatedAt = Date.now();
+    await DB.put(store, rec);
+    Sync.push(store, rec);
+  }
+  async function delRec(store, id) {
+    await DB.del(store, id);
+    Sync.remove(store, id);
+  }
 
   let toastTimer;
   function toast(msg) {
@@ -280,6 +298,7 @@
   const L_routes = L.layerGroup();
   const L_focus = L.layerGroup();
   const L_isles = L.layerGroup();
+  const L_trail = L.layerGroup();
 
   const level = () => { const z = map.getZoom(); return z < Z_COUNTRY ? 'world' : z < Z_LOCAL ? 'country' : 'local'; };
   // Phần bản đồ bị các tấm kính che: trên là ô tìm kiếm, dưới là thẻ ngữ cảnh + thanh tab.
@@ -293,6 +312,7 @@
 
     vnOutline = L.polygon(VN_SHAPE, { color: '#EC7FA2', weight: 2, opacity: .85, fillColor: '#F6AFC6', fillOpacity: .13, interactive: false, smoothFactor: 0.5 });
     ISLES.forEach(i => L.marker([i.lat, i.lng], { interactive: false, icon: L.divIcon({ className: 'mk', html: `<span class="isle">${i.name}</span>`, iconSize: [0, 0] }) }).addTo(L_isles));
+    L_trail.addTo(map);
     L_focus.addTo(map);
     L_pins.addTo(map);
     activeLine = L.polyline([], { color: '#EC7FA2', weight: 6, opacity: .95, lineCap: 'round', lineJoin: 'round' }).addTo(map);
@@ -300,7 +320,7 @@
     map.on('dragstart', () => { S.follow = false; $('#btnLocate').classList.remove('is-on'); });
     map.on('contextmenu', e => { if (!S.picking) openCheckinForm({ lat: e.latlng.lat, lng: e.latlng.lng, fromMap: true }); });
     map.on('click', () => { $('#searchResults').hidden = true; $('#layerMenu').hidden = true; });
-    map.on('zoomend', () => { syncLayers(); drawPins(); renderScope(); });
+    map.on('zoomend', () => { syncLayers(); drawPins(); drawTrail(); renderScope(); });
     let mt;
     map.on('moveend', () => { clearTimeout(mt); mt = setTimeout(renderScope, 120); });
     syncLayers();
@@ -361,7 +381,7 @@
   /** Vẽ ghim theo cấp zoom: quốc gia → tỉnh/thành → cụm gần nhau → từng địa điểm. */
   function drawPins() {
     L_pins.clearLayers();
-    const P = places();
+    const P = shown();
     if (!P.length) return;
     const lv = level(), z = map.getZoom();
 
@@ -371,8 +391,9 @@
       return;
     }
     if (lv === 'country') {
+      const ord = S.trail && S.filter === 'all' ? visitOrder(rKey) : null; // số thứ tự đặt chân
       const items = [...groupBy(P, rKey)].map(([rk, list]) => ({ rk, list, s: bubSize(list.length), label: rLabel(list[0]), at: centroid(list) }));
-      spread(items, z).forEach(it => addMarker(it.at[0], it.at[1], `<div class="bub">${it.list.length}</div><span class="mk-name">${esc(it.label)}</span>`, it.s, null, () => flyRegion(it.rk), it.list.length));
+      spread(items, z).forEach(it => addMarker(it.at[0], it.at[1], `<div class="bub">${it.list.length}${ord ? `<i class="ord">${ord.get(it.rk)}</i>` : ''}</div><span class="mk-name">${esc(it.label)}</span>`, it.s, null, () => flyRegion(it.rk), it.list.length));
       return;
     }
 
@@ -439,6 +460,133 @@
     }
   }
 
+  /* --- bộ lọc trên bản đồ: lọc cả ghim, thẻ ngữ cảnh và danh sách --- */
+  const FILTERS = { all: () => true, fav: p => p.rating >= 5, again: p => p.tags.includes('Đáng quay lại') };
+  const passFilter = p => (FILTERS[S.filter] ? FILTERS[S.filter](p) : p.cat === S.filter);
+  const shown = () => (S.filter === 'all' ? places() : places().filter(passFilter));
+  function renderFilters() {
+    const P = places();
+    const el = $('#mapFilters');
+    el.hidden = P.length < 2 || S.picking || !!S.replay;
+    if (el.hidden) return;
+    const counts = {};
+    P.forEach(p => { counts[p.cat] = (counts[p.cat] || 0) + 1; });
+    if (S.filter !== 'all' && !FILTERS[S.filter] && !counts[S.filter]) S.filter = 'all';
+    const opts = [{ id: 'all', label: 'Tất cả' }, { id: 'fav', label: '♥ Yêu thích' }, { id: 'again', label: 'Đáng quay lại' }]
+      .concat(CATS.filter(c => counts[c.id]).map(c => ({ id: c.id, label: `${c.e} ${c.label}` })));
+    el.innerHTML = opts.map(o => `<button type="button" class="chip ${S.filter === o.id ? 'is-on' : ''}" data-filter="${o.id}">${o.label}</button>`).join('');
+  }
+
+  /* --- đường nối các điểm check-in theo thứ tự thời gian --- */
+  const LONG_HOP = 25000; // chặng xa hơn 25 km (đổi tỉnh, bay) vẽ cong và nét đứt
+  const chrono = () => S.checkins.slice().sort((a, b) => a.visitedAt - b.visitedAt);
+  function hopPath(a, b) {
+    if (hav(a, b) < LONG_HOP) return [a, b];
+    const n = 28, out = [];
+    const cx = (a[0] + b[0]) / 2 - (b[1] - a[1]) * 0.16, cy = (a[1] + b[1]) / 2 + (b[0] - a[0]) * 0.16;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, u = 1 - t;
+      out.push([u * u * a[0] + 2 * u * t * cx + t * t * b[0], u * u * a[1] + 2 * u * t * cy + t * t * b[1]]);
+    }
+    return out;
+  }
+  function trailHops(list) {
+    const hops = [];
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1], b = list[i];
+      const d = hav([a.lat, a.lng], [b.lat, b.lng]);
+      if (d < 30) continue; // cùng một chỗ
+      const j = a.journeyId && a.journeyId === b.journeyId ? S.journeys.find(x => x.id === a.journeyId) : null;
+      hops.push({ a, b, d, gps: !!(j && j.points.length > 1), path: hopPath([a.lat, a.lng], [b.lat, b.lng]) });
+    }
+    return hops;
+  }
+  /** Thứ tự đặt chân: vùng nào check-in sớm nhất thì mang số 1. */
+  function visitOrder(keyFn) {
+    const m = new Map();
+    chrono().forEach(c => { const k = keyFn(c); if (!m.has(k)) m.set(k, m.size + 1); });
+    return m;
+  }
+  function drawTrail() {
+    L_trail.clearLayers();
+    if (!S.trail || S.replay || !map) return;
+    const z = map.getZoom(), local = z >= Z_LOCAL;
+    for (const h of trailHops(chrono())) {
+      const long = h.d >= LONG_HOP;
+      if (h.gps && z >= Z_ROUTES) continue;       // đoạn này đã có lộ trình GPS chi tiết
+      if (!local && h.d < 4000) continue;         // quá ngắn để thấy ở cấp tỉnh
+      L.polyline(h.path, { color: '#C24E78', weight: local ? 3 : 2.5, opacity: long ? .62 : .85, dashArray: long ? '2 9' : null, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(L_trail);
+      const pa = map.project(h.path[0], z), pb = map.project(h.path[h.path.length - 1], z);
+      if (pa.distanceTo(pb) < 64) continue;
+      const m = Math.floor(h.path.length / 2);
+      const pos = h.path.length === 2 ? [(h.path[0][0] + h.path[1][0]) / 2, (h.path[0][1] + h.path[1][1]) / 2] : h.path[m];
+      const p1 = map.project(h.path[Math.max(0, m - 1)], z), p2 = map.project(h.path[Math.min(h.path.length - 1, m + 1)], z);
+      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+      L.marker(pos, { interactive: false, keyboard: false, zIndexOffset: -600, icon: L.divIcon({ className: 'mk', html: `<span class="arrow" style="transform:translate(-50%,-50%) rotate(${ang.toFixed(1)}deg)"></span>`, iconSize: [0, 0] }) }).addTo(L_trail);
+    }
+  }
+
+  /* --- phát lại hành trình: đường nối tự vẽ dần từ điểm đầu tiên đến điểm mới nhất --- */
+  function scopeCheckins() {
+    const k = S.scopeKey || '';
+    const all = chrono();
+    let list = all;
+    if (k.startsWith('country:')) list = all.filter(c => cKey(c) === k.slice(8));
+    else if (k.startsWith('region:')) list = all.filter(c => rKey(c) === k.slice(7));
+    return list.length >= 2 ? list : all;
+  }
+  function startReplay() {
+    stopReplay();
+    const list = scopeCheckins();
+    if (list.length < 2) { toast('Cần ít nhất 2 điểm check-in để phát lại'); return; }
+    const pts = list.map(c => [c.lat, c.lng]);
+    const paths = pts.slice(1).map((p, i) => hopPath(pts[i], p));
+    const per = Math.max(420, Math.min(1300, 24000 / paths.length)); // thời gian cho mỗi chặng
+    const line = L.polyline([], { color: '#C24E78', weight: 4, opacity: .95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(map);
+    const dot = L.marker(pts[0], { interactive: false, zIndexOffset: 3000, icon: L.divIcon({ className: 'mk', html: '<div class="replay-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(map);
+    S.replay = { line, dot, raf: 0, shownIdx: -1 };
+    L_trail.clearLayers();
+    renderFilters();
+    $('#replayBar').hidden = false;
+    $('#view-map').classList.add('has-focus');
+    map.fitBounds(L.latLngBounds(pts).pad(0.2), { paddingTopLeft: L.point(24, 150), paddingBottomRight: padBR(), maxZoom: 16, animate: false });
+    const show = i => {
+      if (S.replay.shownIdx === i) return;
+      S.replay.shownIdx = i;
+      const c = list[i];
+      $('#replayTitle').textContent = `${i + 1}/${list.length} · ${dDate(c.visitedAt)} · ${c.name}`;
+    };
+    show(0);
+    const t0 = performance.now() + 500;
+    const tick = now => {
+      if (!S.replay) return;
+      const f = Math.max(0, (now - t0) / per);
+      const i = Math.min(paths.length - 1, Math.floor(f));
+      const done = f >= paths.length;
+      const frac = done ? 1 : Math.min(1, (f - i) / 0.72); // 28% cuối mỗi chặng là dừng lại ở điểm đến
+      const cur = paths[i];
+      const pos = frac * (cur.length - 1), k = Math.floor(pos), r = pos - k;
+      const head = k >= cur.length - 1 ? cur[cur.length - 1] : [cur[k][0] + (cur[k + 1][0] - cur[k][0]) * r, cur[k][1] + (cur[k + 1][1] - cur[k][1]) * r];
+      line.setLatLngs(paths.slice(0, i).concat([cur.slice(0, k + 1).concat([head])]));
+      dot.setLatLng(head);
+      show(frac >= 1 ? i + 1 : i);
+      if (done) { S.replay.raf = 0; setTimeout(() => S.replay && S.replay.line === line && stopReplay(), 1600); return; }
+      S.replay.raf = requestAnimationFrame(tick);
+    };
+    S.replay.raf = requestAnimationFrame(tick);
+  }
+  function stopReplay() {
+    if (!S.replay) return;
+    cancelAnimationFrame(S.replay.raf);
+    map.removeLayer(S.replay.line);
+    map.removeLayer(S.replay.dot);
+    S.replay = null;
+    $('#replayBar').hidden = true;
+    if (!S.focusId) $('#view-map').classList.remove('has-focus');
+    renderFilters();
+    drawTrail();
+  }
+
   /* --- di chuyển giữa các cấp --- */
   const flyOpt = () => ({ paddingTopLeft: padTL(), paddingBottomRight: padBR(), duration: .9 });
   // Dời tâm xuống một chút để vùng cần xem nằm giữa phần bản đồ không bị che.
@@ -484,20 +632,26 @@
   }
 
   /* --- thẻ ngữ cảnh ở đáy bản đồ --- */
-  const crumbs = parts => `<nav class="crumbs">${parts.map((p, i) => `${i ? icon('chevron') : ''}<button type="button" ${p.attr || 'disabled'}>${p.label}</button>`).join('')}</nav>`;
+  const scopeActs = () => `<span class="scope-acts">${S.trail && S.checkins.length > 1 ? `<button type="button" data-act="replay">${icon('play')}Phát lại</button>` : ''}<button type="button" data-act="list">${icon('list')}Danh sách</button></span>`;
+  const crumbs = parts => `<div class="scope-top"><nav class="crumbs">${parts.map((p, i) => `${i ? icon('chevron') : ''}<button type="button" ${p.attr || 'disabled'}>${p.label}</button>`).join('')}</nav>${scopeActs()}</div>`;
 
-  function renderScope() {
+  function renderScope(force) {
     const el = $('#scopeCard');
     el.hidden = S.picking || S.view !== 'map';
     if (el.hidden || !map) return;
-    const P = places();
+    const P = shown();
     let key, html;
 
-    if (!P.length) {
+    if (places().length && !P.length) {
+      key = 'nomatch';
+      html = `
+        <div class="scope-head"><h2>Không có nơi nào khớp bộ lọc</h2></div>
+        <div class="hscroll"><button type="button" class="reg-chip" data-act="nofilter"><i>${icon('x')}</i>Bỏ lọc</button></div>`;
+    } else if (!P.length) {
       key = 'empty';
       html = `
         <div class="scope-head"><h2>Bản đồ chữ S của bạn</h2><span class="num"><b>0</b>/${Geo.UNITS.length} tỉnh thành</span></div>
-        <p>Chưa có dấu chân nào. Bấm nút <b>+</b> để check-in nơi đầu tiên, hoặc xem thử với dữ liệu mẫu.</p>
+        <p>Chưa có nơi nào. Bấm nút <b>+</b> để check-in ngay chỗ bạn đang đứng, hoặc xem thử với dữ liệu mẫu.</p>
         <div><button type="button" class="btn soft sm" data-act="demo">${icon('sparkle')}Xem thử dữ liệu mẫu</button></div>`;
     } else {
       const lv = level();
@@ -535,7 +689,7 @@
         } else {
           html = `
             ${crumbs([{ label: 'Thế giới', attr: 'data-act="world"' }])}
-            <div class="scope-head"><h2>Vùng này chưa có dấu chân</h2></div>
+            <div class="scope-head"><h2>Vùng này chưa có nơi nào</h2></div>
             <div class="hscroll"><button type="button" class="reg-chip" data-act="home"><i class="flag">🇻🇳</i>Về bản đồ chữ S</button></div>`;
         }
       } else {
@@ -562,7 +716,7 @@
           key = 'none:' + near.key;
           html = `
             ${crumbs([{ label: 'Thế giới', attr: 'data-act="world"' }].concat(inVN ? [{ label: 'Việt Nam', attr: 'data-cc="VN"' }] : []))}
-            <div class="scope-head"><h2>Chưa có dấu chân quanh đây</h2></div>
+            <div class="scope-head"><h2>Chưa check-in nơi nào quanh đây</h2></div>
             <div class="hscroll">
               <button type="button" class="reg-chip" data-act="pickpin"><i>${icon('plus')}</i>Ghim nơi này</button>
               <button type="button" class="reg-chip" data-place="${near.latest.id}"><i class="flag">${catOf(near).e}</i>Gần nhất: ${esc(near.name)}<em>${km(nd)}</em></button>
@@ -570,8 +724,9 @@
         }
       }
     }
-    key += '|' + S.rev;
-    if (el.dataset.key === key) return;
+    S.scopeKey = key;
+    key += '|' + S.rev + '|' + S.filter + '|' + S.trail;
+    if (!force && el.dataset.key === key) return;
     el.dataset.key = key;
     el.innerHTML = html;
     hydratePhotos(el);
@@ -727,7 +882,7 @@
     j.endedAt = Date.now();
     stopWatch();
     wake(false);
-    await DB.put('journeys', j);
+    await saveRec('journeys', j);
     S.active = null;
     drawActive();
     drawRoutes();
@@ -759,7 +914,7 @@
       if (act === 'save') {
         j.name = $('#jName').value.trim() || j.name;
         j.note = $('#jNote').value.trim();
-        await DB.put('journeys', j);
+        await saveRec('journeys', j);
         closeSheet();
         toast('Đã lưu hành trình vào Nhật ký');
         bump();
@@ -771,8 +926,8 @@
   }
 
   async function deleteJourney(id, silent = false) {
-    for (const c of jCheckins(id)) { c.journeyId = null; await DB.put('checkins', c); }
-    await DB.del('journeys', id);
+    for (const c of jCheckins(id)) { c.journeyId = null; c.updatedAt = Date.now(); await saveRec('checkins', c); }
+    await delRec('journeys', id);
     S.journeys = S.journeys.filter(j => j.id !== id);
     if (S.focusId === id) unfocus();
     drawRoutes();
@@ -809,29 +964,21 @@
       <button type="button" class="sq stop" data-act="end" aria-label="Kết thúc hành trình">${icon('stop')}</button>`;
   }
 
-  /* ================= Menu tạo mới (nút +) ================= */
-  function openFab() {
+  /* ================= Tuỳ chọn bản đồ & hành động chung ================= */
+  function openMenu() {
     const j = S.active;
-    const item = (act, ic, cls, title, sub) => `<button type="button" data-act="${act}"><span class="ic ${cls}">${icon(ic)}</span><span class="t"><b>${title}</b><small>${sub}</small></span></button>`;
-    $('#fabMenu').innerHTML =
-      item('checkin', 'pin', 'main', 'Check-in tại đây', 'Lưu nơi bạn đang đứng, kèm ảnh và cảm nhận') +
-      item('pickpin', 'map', '', 'Ghim một điểm trên bản đồ', 'Cho nơi đã đi qua mà chưa kịp check-in') +
-      (!j ? item('start', 'route', '', 'Ghi hành trình', 'Vẽ lại con đường bạn đi bằng GPS')
-        : (j.status === 'paused'
-          ? item('resume', 'play', '', 'Tiếp tục hành trình', esc(j.name))
-          : item('pause', 'pause', '', 'Tạm dừng hành trình', esc(j.name)))
-          + item('end', 'stop', 'stop', 'Kết thúc hành trình', `${km(j.distance)} · ${dur(elapsed(j))}`));
-    $('#fabMenu').hidden = false;
-    $('#fabScrim').hidden = false;
-    $('#btnAdd').setAttribute('aria-expanded', 'true');
+    const row = (attr, label, on, ic) => `<button type="button" ${attr} class="${on ? 'is-on' : ''}">${ic ? icon(ic) : ''}<span>${label}</span>${on ? icon('check') : ''}</button>`;
+    $('#layerMenu').innerHTML =
+      '<p>Kiểu bản đồ</p>' + Object.entries(TILES).map(([k, t]) => row(`data-tile="${k}"`, t.name, S.tile === k)).join('')
+      + '<p>Hiển thị</p>' + row('data-act="trail"', 'Đường nối theo thời gian', S.trail)
+      + '<p>Thêm</p>' + row('data-act="pickpin"', 'Ghim một nơi khác', false, 'pin')
+      + (!j ? row('data-act="start"', 'Ghi đường đi bằng GPS', false, 'route') : row('data-act="end"', 'Kết thúc ghi đường đi', false, 'stop'));
+    $('#layerMenu').hidden = false;
   }
-  function closeFab() {
-    $('#fabMenu').hidden = true;
-    $('#fabScrim').hidden = true;
-    $('#btnAdd').setAttribute('aria-expanded', 'false');
-  }
+  const closeMenu = () => { $('#layerMenu').hidden = true; };
+
   function doAct(act) {
-    if (act === 'checkin') openCheckinForm();
+    if (act === 'checkin') quickCheckin();
     else if (act === 'pickpin') pickNew();
     else if (act === 'start') startJourney();
     else if (act === 'pause') pauseJourney();
@@ -844,13 +991,161 @@
     else if (act === 'wipe') wipeAll();
     else if (act === 'world') showWorld();
     else if (act === 'home') { go('map'); showS(); }
-    else return false;
+    else if (act === 'replay') startReplay();
+    else if (act === 'list') openPlaceList();
+    else if (act === 'nofilter') { S.filter = 'all'; bump(); }
+    else if (act === 'share') openShare();
+    else if (act === 'trail') {
+      S.trail = !S.trail;
+      DB.setMeta('trail', S.trail).catch(() => {});
+      drawTrail(); drawPins(); renderScope(true);
+      toast(S.trail ? 'Hiện đường nối theo thời gian' : 'Ẩn đường nối');
+    } else return false;
     return true;
+  }
+
+  /* ================= Check-in một chạm ================= */
+  function locateQuick() {
+    if (!geoOk) return Promise.resolve(null);
+    return new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      updateMe(lat, lng, accuracy);
+      resolve(S.me);
+    }, () => resolve(null), { enableHighAccuracy: true, maximumAge: 15000, timeout: 9000 }));
+  }
+
+  /** Bấm + là lưu ngay vị trí và giờ hiện tại. Tên, ảnh, cảm nhận bổ sung sau. */
+  async function quickCheckin() {
+    if (S.quickBusy || S.picking) return;
+    closeMenu();
+    S.quickBusy = true;
+    $('#btnAdd').classList.add('busy');
+    const me = S.me && Date.now() - S.me.t < 45000 ? S.me : await locateQuick();
+    S.quickBusy = false;
+    $('#btnAdd').classList.remove('busy');
+    if (!me) { toast('Chưa lấy được vị trí. Hãy đặt ghim vào đúng chỗ.'); pickNew(); return; }
+    await createQuick(me.lat, me.lng);
+  }
+
+  async function createQuick(lat, lng) {
+    const d = newDraft(lat, lng, { source: 'gps' });
+    let near = null, nd = 100; // trong 100 m quanh một nơi đã ghé thì coi là ghé lại nơi đó
+    for (const p of places()) { const dist = hav([p.lat, p.lng], [lat, lng]); if (dist < nd) { nd = dist; near = p; } }
+    let repeat = null;
+    if (near) {
+      const l = near.latest;
+      repeat = { visits: near.visits.length, last: l };
+      Object.assign(d, { name: near.name, cat: near.cat, price: near.price, address: l.address || '', province: l.province || d.province, country: l.country || d.country, cc: l.cc || d.cc, regionSrc: l.regionSrc || d.regionSrc });
+    } else {
+      d.name = `Điểm dừng ${dTime(d.visitedAt)}`;
+      d.draft = true;
+    }
+    const c = recordOf(d);
+    await saveRec('checkins', c);
+    S.checkins.push(c);
+    S.checkins.sort((a, b) => b.visitedAt - a.visitedAt);
+    bump();
+    if (navigator.vibrate) navigator.vibrate(25);
+    showQuick(c.id, repeat);
+    if (S.view === 'map') { const z = Math.max(map.getZoom(), 16); map.flyTo(offsetCenter([lat, lng], z), z, { duration: .7 }); }
+    if (!near) enrichQuick(c.id);
+  }
+
+  /** Nơi mới: hỏi dịch vụ bản đồ để tự điền tên quán, địa chỉ, tỉnh và loại địa điểm. */
+  async function enrichQuick(id) {
+    const c0 = S.checkins.find(x => x.id === id);
+    if (!c0) return;
+    const r = await reverse(c0.lat, c0.lng);
+    const c = S.checkins.find(x => x.id === id);
+    if (!r || !c || !c.draft) return;
+    const a = r.address || {};
+    const poi = r.name && r.name !== a.road ? r.name : '';
+    const reg = Geo.fromAddress(a, c.lat, c.lng);
+    if (reg) Object.assign(c, { province: reg.province, country: reg.country, cc: reg.cc, regionSrc: 'geo' });
+    c.address = [a.road && (a.house_number ? a.house_number + ' ' : '') + a.road, a.suburb || a.quarter || a.village || a.town].filter(Boolean).join(', ');
+    if (poi) { c.name = poi; c.cat = guessCat(r) || c.cat; }
+    else if (a.road) c.name = `Gần ${a.road}`;
+    c.updatedAt = Date.now();
+    await saveRec('checkins', c);
+    bump();
+    if (S.quick && S.quick.id === id) renderQuick();
+  }
+
+  /* --- thẻ nhỏ sau khi check-in: chấm tim, thêm ảnh, bổ sung, hoàn tác --- */
+  let quickTimer;
+  const armQuick = () => { clearTimeout(quickTimer); quickTimer = setTimeout(hideQuick, 15000); };
+  function showQuick(id, repeat) {
+    S.quick = { id, repeat, msg: '' };
+    renderQuick();
+    armQuick();
+  }
+  function hideQuick() {
+    clearTimeout(quickTimer);
+    S.quick = null;
+    $('#quickCard').hidden = true;
+  }
+  function renderQuick() {
+    const q = S.quick, el = $('#quickCard');
+    const c = q && S.checkins.find(x => x.id === q.id);
+    if (!c) { hideQuick(); return; }
+    const last = q.repeat && q.repeat.last;
+    const note = q.msg || (last
+      ? `Lần thứ ${q.repeat.visits + 1} bạn ghé nơi này · lần trước ${dDate(last.visitedAt)}${last.rating ? ' · ' + '♥'.repeat(last.rating) : ''}${last.feedback ? ` · “${last.feedback.slice(0, 70)}${last.feedback.length > 70 ? '…' : ''}”` : ''}`
+      : 'Đã lưu vị trí và thời gian. Tên, ảnh và cảm nhận bổ sung lúc nào cũng được.');
+    el.innerHTML = `
+      <div class="qc-head">
+        <span class="qc-ok">${icon('check')}</span>
+        <span class="t"><small>Đã check-in · ${dTime(c.visitedAt)}${c.province ? ' · ' + esc(c.province) : ''}</small><b>${esc(c.name)}</b></span>
+        <button type="button" class="icon-btn" data-q="close" aria-label="Đóng">${icon('x')}</button>
+      </div>
+      <p class="qc-note">${esc(note)}</p>
+      <div class="rate-input">${[1, 2, 3, 4, 5].map(i => `<button type="button" data-q-rate="${i}" class="${i <= c.rating ? 'on' : ''}" aria-label="${i} tim">${icon('heart')}</button>`).join('')}</div>
+      <div class="qc-acts">
+        <button type="button" class="btn soft sm" data-q="photo">${icon('camera')}Ảnh${c.photoIds.length ? ` (${c.photoIds.length})` : ''}</button>
+        <button type="button" class="btn soft sm" data-q="edit">${icon('edit')}Bổ sung</button>
+        <button type="button" class="btn ghost sm" data-q="undo">Hoàn tác</button>
+      </div>`;
+    el.hidden = false;
+  }
+  async function quickAct(b) {
+    const q = S.quick;
+    const c = q && S.checkins.find(x => x.id === q.id);
+    if (!c) { hideQuick(); return; }
+    armQuick();
+    if (b.dataset.qRate) {
+      const v = +b.dataset.qRate;
+      c.rating = c.rating === v ? 0 : v;
+      c.updatedAt = Date.now();
+      await saveRec('checkins', c);
+      bump();
+      renderQuick();
+    } else if (b.dataset.q === 'close') hideQuick();
+    else if (b.dataset.q === 'photo') $('#quickFile').click();
+    else if (b.dataset.q === 'edit') { hideQuick(); openCheckinForm({ edit: c.id }); }
+    else if (b.dataset.q === 'undo') { hideQuick(); await deleteCheckin(c.id); toast('Đã bỏ check-in vừa rồi'); }
+  }
+  async function quickPhotos(files) {
+    const q = S.quick;
+    const c = q && S.checkins.find(x => x.id === q.id);
+    if (!c || !files.length) return;
+    clearTimeout(quickTimer);
+    q.msg = 'Đang nén ảnh…';
+    renderQuick();
+    for (const f of files.slice(0, 12 - c.photoIds.length)) {
+      const { blob, thumb } = await processImage(f);
+      const pid = uid();
+      await saveRec('photos', { id: pid, checkinId: c.id, blob, thumb, createdAt: Date.now() });
+      c.photoIds.push(pid);
+    }
+    c.updatedAt = Date.now();
+    await saveRec('checkins', c);
+    bump();
+    if (S.quick === q) { q.msg = `Đã thêm ảnh, hiện có ${c.photoIds.length} ảnh.`; renderQuick(); armQuick(); }
   }
 
   /* ================= Bottom sheet ================= */
   function openSheet(html, foot = '', kind = null) {
-    closeFab();
+    closeMenu();
     S.sheetKind = kind;
     const inner = $('#sheetInner');
     inner.innerHTML = html;
@@ -1163,6 +1458,23 @@
     };
   }
 
+  /** Bản ghi check-in từ bản nháp trong form hoặc từ check-in nhanh. */
+  function recordOf(d) {
+    const now = Date.now();
+    const me = Sync.profile;
+    const c = {
+      id: d.id, journeyId: d.journeyId, lat: d.lat, lng: d.lng, name: d.name.trim(), address: d.address || '',
+      province: d.province, country: d.country, cc: d.cc, regionSrc: d.regionSrc,
+      cat: d.cat, rating: d.rating, price: d.price, tags: d.tags, feedback: (d.feedback || '').trim(), memory: (d.memory || '').trim(),
+      mood: d.mood, photoIds: (d.photos || []).map(p => p.id), visitedAt: d.visitedAt,
+      createdAt: d.createdAt || now, updatedAt: now,
+      by: d.by || (me ? me.id : null), byName: d.byName || (me ? me.name : '')
+    };
+    if (d.draft) c.draft = true;
+    if (d.editing && d.demo) c.demo = true;
+    return c;
+  }
+
   async function saveCheckin() {
     const d = S.draft;
     if (d.photos.some(p => p.busy)) { toast('Đợi ảnh nén xong một chút nhé'); return; }
@@ -1174,19 +1486,12 @@
       return;
     }
     for (const p of d.photos.filter(p => p.isNew)) {
-      await DB.put('photos', { id: p.id, checkinId: d.id, blob: p.blob, thumb: p.thumb, createdAt: Date.now() });
+      await saveRec('photos', { id: p.id, checkinId: d.id, blob: p.blob, thumb: p.thumb, createdAt: Date.now() });
     }
-    for (const id of d.removed) { await DB.del('photos', id); dropUrls(id); }
-    const now = Date.now();
-    const c = {
-      id: d.id, journeyId: d.journeyId, lat: d.lat, lng: d.lng, name: d.name.trim(), address: d.address,
-      province: d.province, country: d.country, cc: d.cc, regionSrc: d.regionSrc,
-      cat: d.cat, rating: d.rating, price: d.price, tags: d.tags, feedback: d.feedback.trim(), memory: d.memory.trim(),
-      mood: d.mood, photoIds: d.photos.map(p => p.id), visitedAt: d.visitedAt,
-      createdAt: d.createdAt || now, updatedAt: now
-    };
-    if (d.editing && d.demo) c.demo = true;
-    await DB.put('checkins', c);
+    for (const id of d.removed) { await delRec('photos', id); dropUrls(id); }
+    d.draft = false; // đã tự tay bổ sung
+    const c = recordOf(d);
+    await saveRec('checkins', c);
     const i = S.checkins.findIndex(x => x.id === c.id);
     if (i >= 0) S.checkins[i] = c; else S.checkins.push(c);
     S.checkins.sort((a, b) => b.visitedAt - a.visitedAt);
@@ -1205,10 +1510,13 @@
     const c = map.getCenter();
     S.draft = newDraft(c.lat, c.lng);
     S.draft.fromPick = true;
+    if (S.pickDate) { S.draft.visitedAt = S.pickDate; S.draft.journeyId = null; S.pickDate = null; }
     startPick();
   }
   function startPick() {
     const d = S.draft;
+    stopReplay();
+    hideQuick();
     S.picking = true;
     closeSheet();
     go('map');
@@ -1218,6 +1526,7 @@
     }
     $('#pickCross').hidden = false;
     $('#pickBar').hidden = false;
+    renderFilters();
     renderRec();
     renderScope();
   }
@@ -1225,6 +1534,7 @@
     S.picking = false;
     $('#pickCross').hidden = true;
     $('#pickBar').hidden = true;
+    renderFilters();
     renderRec();
     renderScope();
     const d = S.draft;
@@ -1255,7 +1565,9 @@
         ${where ? `<span class="where">${icon('pin')}${esc(where)}</span>` : ''}
         <h2>${esc(c.name)} ${c.demo ? '<span class="badge beige">Mẫu</span>' : ''}</h2>
         <span class="sub">${esc(c.address || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`)}</span>
+        ${avatar(c) ? `<span class="by">${avatar(c)}${esc(byName(c))} đăng</span>` : ''}
       </div>
+      ${c.draft ? `<p class="todo">${icon('edit')}Check-in nhanh, chưa bổ sung. Bấm Sửa để thêm tên, ảnh và cảm nhận.</p>` : ''}
       <div class="kv">
         <div><span>Loại</span><b>${cat.e} ${cat.label}</b></div>
         <div><span>Đánh giá</span><b>${c.rating ? hearts(c.rating) : 'Chưa chấm'}</b></div>
@@ -1304,8 +1616,8 @@
 
   async function deleteCheckin(id) {
     const c = S.checkins.find(x => x.id === id);
-    for (const p of c.photoIds) { await DB.del('photos', p); dropUrls(p); }
-    await DB.del('checkins', id);
+    for (const p of c.photoIds) { await delRec('photos', p); dropUrls(p); }
+    await delRec('checkins', id);
     S.checkins = S.checkins.filter(x => x.id !== id);
     bump();
   }
@@ -1313,14 +1625,18 @@
   /* ================= Lightbox ================= */
   function openLightbox(ids, start = 0, cap = '') {
     const lb = $('#lightbox'), tr = $('#lbTrack');
+    S.lb = { ids, i: start };
     tr.innerHTML = ids.map(id => `<figure><img data-photo="${id}" data-size="full" alt=""></figure>`).join('');
-    $('#lbCap').textContent = typeof cap === 'function' ? cap(start) : cap;
+    const setCap = i => { $('#lbCap').textContent = (typeof cap === 'function' ? cap(i) : cap) + '  ›'; };
+    setCap(start);
     lb.hidden = false;
     hydratePhotos(tr);
     requestAnimationFrame(() => { tr.scrollLeft = start * tr.clientWidth; });
     tr.onscroll = () => {
-      if (typeof cap !== 'function') return;
-      $('#lbCap').textContent = cap(Math.round(tr.scrollLeft / tr.clientWidth));
+      const i = Math.round(tr.scrollLeft / tr.clientWidth);
+      if (i === S.lb.i) return;
+      S.lb.i = i;
+      setCap(i);
     };
   }
   function photoCaption(pid) {
@@ -1348,81 +1664,142 @@
     return `<svg viewBox="0 0 ${w} ${h}">${lines}${dots}${st ? `<circle cx="${st[0]}" cy="${st[1]}" r="4" fill="#C24E78"/>` : ''}</svg>`;
   }
 
-  /* ================= Nhật ký: mọi thứ theo ngày ================= */
-  function renderDiary() {
-    const q = S.diaryQuery.trim().toLowerCase();
-    const regs = [...groupBy(S.checkins, rKey)].sort((a, b) => b[1].length - a[1].length);
-    if (S.diaryReg !== 'all' && !regs.some(([rk]) => rk === S.diaryReg)) S.diaryReg = 'all';
-    $('#diaryFilters').innerHTML = [`<button type="button" class="chip ${S.diaryReg === 'all' ? 'is-on' : ''}" data-reg="all">Tất cả</button>`]
-      .concat(regs.map(([rk, l]) => `<button type="button" class="chip ${S.diaryReg === rk ? 'is-on' : ''}" data-reg="${esc(rk)}">${l[0].cc && l[0].cc !== 'VN' ? flagOf(l[0]) + ' ' : ''}${esc(rLabel(l[0]))} · ${l.length}</button>`)).join('');
+  /* ================= Nhật ký: lịch tháng, bấm một ngày thì lịch thu gọn và hiện kỉ niệm ngày đó ================= */
+  function calInit() {
+    if (S.cal) return;
+    const d = new Date(S.checkins[0] ? S.checkins[0].visitedAt : Date.now());
+    S.cal = { y: d.getFullYear(), m: d.getMonth(), day: null };
+  }
+  function calGo(y, m, day = null) {
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    S.cal = { y, m, day };
+    renderDiary();
+    $('#view-diary').scrollTop = 0;
+  }
+  /** Gom check-in và hành trình theo từng ngày. */
+  function dayIndex() {
+    const m = new Map();
+    const at = t => { const k = dayKey(t); if (!m.has(k)) m.set(k, { t, cs: [], js: [] }); return m.get(k); };
+    S.checkins.forEach(c => at(c.visitedAt).cs.push(c));
+    S.journeys.forEach(j => at(j.startedAt).js.push(j));
+    return m;
+  }
 
-    const el = $('#diaryList');
-    if (!S.checkins.length && !S.journeys.length) {
-      el.innerHTML = emptyState('book', 'Nhật ký còn trống', 'Mỗi lần check-in hay ghi một hành trình, nó sẽ hiện ở đây theo từng ngày.', true);
-      return;
-    }
-    const inReg = x => S.diaryReg === 'all' || (x && rKey(x) === S.diaryReg);
-    const cs = S.checkins.filter(c => inReg(c) && (!q || [c.name, c.address, c.province, c.country, c.feedback, c.memory, ...c.tags].join(' ').toLowerCase().includes(q)));
-    const js = S.journeys.filter(j => inReg(S.diaryReg === 'all' ? null : jRegion(j)) && (!q || [j.name, j.note].join(' ').toLowerCase().includes(q) || cs.some(c => c.journeyId === j.id)));
+  function renderCal(idx) {
+    const { y, m, day } = S.cal;
+    const prefix = `${y}-${pad(m + 1)}-`;
+    const daysIn = new Date(y, m + 1, 0).getDate();
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7; // tuần bắt đầu từ thứ Hai
+    const today = dayKey(Date.now());
+    const cells = Array(lead).fill(0);
+    for (let d = 1; d <= daysIn; d++) cells.push(d);
+    while (cells.length % 7) cells.push(0);
+    let rows = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    if (day) rows = rows.filter(r => r.includes(+day.slice(8))); // đã chọn ngày: chỉ giữ tuần chứa ngày đó
 
-    if (S.diaryMode === 'album') {
-      const ids = cs.flatMap(c => c.photoIds);
-      el.innerHTML = ids.length
-        ? `<div class="gallery">${ids.map((p, i) => `<button type="button" data-lb="${i}"><img data-photo="${p}" alt=""></button>`).join('')}</div><p class="foot-note">${ids.length} ảnh từ ${cs.filter(c => c.photoIds.length).length} lần check-in</p>`
-        : emptyState('image', 'Chưa có ảnh', 'Thêm ảnh khi check-in để album đầy dần lên.');
-      el.dataset.ids = JSON.stringify(ids);
-      hydratePhotos(el);
-      return;
-    }
+    const count = k => { const e = idx.get(k); return e ? (e.cs.length || (e.js.length ? 1 : 0)) : 0; };
+    let maxN = 1, monthCs = [];
+    for (let d = 1; d <= daysIn; d++) { const e = idx.get(prefix + pad(d)); if (e) { maxN = Math.max(maxN, count(prefix + pad(d))); monthCs = monthCs.concat(e.cs); } }
+    const cell = d => {
+      if (!d) return '<span class="cal-d off"></span>';
+      const k = prefix + pad(d), n = count(k);
+      return `<button type="button" class="cal-d ${n ? 'has' : ''} ${k === day ? 'sel' : ''} ${k === today ? 'today' : ''}" data-day="${k}"${n ? ` style="--a:${(0.16 + 0.5 * (n / maxN)).toFixed(2)}"` : ''} aria-label="Ngày ${d}${n ? `, ${n} kỉ niệm` : ''}"><b>${d}</b>${n ? `<i>${n}</i>` : ''}</button>`;
+    };
+    const sel = day ? new Date(`${day}T12:00:00`) : null;
+    const title = sel ? `${WEEKDAYS[sel.getDay()]}, ${pad(sel.getDate())}/${pad(m + 1)}/${y}` : `Tháng ${m + 1}, ${y}`;
+    const sum = monthCs.length
+      ? `${monthCs.length} lần check-in · ${new Set(monthCs.map(rKey)).size} tỉnh thành · ${monthCs.reduce((a, c) => a + c.photoIds.length, 0)} ảnh`
+      : 'Tháng này chưa có kỉ niệm';
+    const isThisMonth = today.startsWith(prefix);
+    $('#calBox').innerHTML = `
+      <div class="cal-head">
+        <button type="button" class="icon-btn" data-cal="prev" aria-label="Tháng trước">${icon('back')}</button>
+        <button type="button" class="cal-title" data-cal="toggle" ${day ? 'aria-expanded="false"' : 'disabled'}>${title}${day ? icon('down') : ''}</button>
+        <button type="button" class="icon-btn" data-cal="next" aria-label="Tháng sau">${icon('chevron')}</button>
+      </div>
+      <div class="cal-grid dow">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="cal-grid">${rows.flat().map(cell).join('')}</div>
+      <div class="cal-foot">
+        <span>${day ? `Tháng ${m + 1}: ${sum}` : sum}</span>
+        ${day ? '<button type="button" class="chip-btn" data-cal="toggle">Xem cả tháng</button>' : (isThisMonth ? '' : '<button type="button" class="chip-btn" data-cal="today">Hôm nay</button>')}
+      </div>`;
+  }
 
-    const days = new Map();
-    const day = t => { const k = dayKey(t); if (!days.has(k)) days.set(k, { t, cs: [], js: [] }); return days.get(k); };
-    cs.forEach(c => day(c.visitedAt).cs.push(c));
-    js.forEach(j => day(j.startedAt).js.push(j));
-    if (!days.size) { el.innerHTML = emptyState('search', 'Không tìm thấy', 'Thử bỏ bớt bộ lọc hoặc tìm bằng từ khác.'); return; }
-
-    el.innerHTML = [...days.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([, D]) => {
-      const d = new Date(D.t);
-      const regsOfDay = [...new Set(D.cs.map(rLabel).concat(D.js.map(j => { const r = jRegion(j); return r ? rLabel(r) : null; }).filter(Boolean)))];
-      D.cs.sort((a, b) => a.visitedAt - b.visitedAt);
-      D.js.sort((a, b) => a.startedAt - b.startedAt);
-      return `
-        <section class="day">
-          <header class="day-head">
-            <span class="dnum">${pad(d.getDate())}</span>
-            <span class="dd"><strong>${WEEKDAYS[d.getDay()]}</strong><small>Tháng ${d.getMonth() + 1}, ${d.getFullYear()}</small></span>
-            ${regsOfDay.slice(0, 2).map(r => `<span class="badge">${esc(r)}</span>`).join('')}
-          </header>
-          ${D.js.map(j => {
-            const jc = jCheckins(j.id);
-            return `<button type="button" class="jstrip" data-journey="${j.id}">
-              <span class="thumb">${routeSvg(j, 54, 54)}</span>
-              <span><span class="ttl">${esc(j.name)} ${j.status !== 'done' ? '<span class="badge">Đang ghi</span>' : ''}${j.demo ? ' <span class="badge beige">Mẫu</span>' : ''}</span>
-                <span class="nums"><span>${icon('route')}${km(j.distance)}</span><span>${icon('clock')}${dur(elapsed(j))}</span><span>${icon('pin')}${jc.length}</span></span></span>
-              ${icon('chevron')}
-            </button>`;
-          }).join('')}
-          ${D.cs.length ? `<div class="rail">${D.cs.map(c => {
-            const cat = catOf(c);
-            const ph = c.photoIds.slice(0, 3);
-            const more = c.photoIds.length - 3;
-            return `<div class="stop"><span class="time">${dTime(c.visitedAt)}</span>
-              <button type="button" class="card mcard" data-ci="${c.id}">
-                ${ph.length ? `<span class="photos">${ph.map((p, i) => `<span class="${i === 2 && more > 0 ? 'more' : ''}" data-more="+${more}"><img data-photo="${p}" alt=""></span>`).join('')}</span>` : ''}
-                <span class="body">
-                  <span class="top">
-                    <span class="cat">${cat.e}</span>
-                    <span class="t"><span class="ttl">${esc(c.name)}</span><span class="sub">${cat.label}${c.price != null ? ' · ' + PRICES[c.price] : ''}${c.rating ? ' · ' + '♥'.repeat(c.rating) : ''}${c.demo ? ' · mẫu' : ''}</span></span>
-                    ${c.mood ? `<span class="mood" title="${MOOD[c.mood].l}">${MOOD[c.mood].e}</span>` : ''}
-                  </span>
-                  ${c.memory ? `<span class="memo">${esc(c.memory)}</span>` : ''}
-                  ${c.feedback ? `<span class="fb">${esc(c.feedback)}</span>` : ''}
+  function dayHtml(D) {
+    const d = new Date(D.t);
+    const regs = [...new Set(D.cs.map(rLabel).concat(D.js.map(j => { const r = jRegion(j); return r ? rLabel(r) : null; }).filter(Boolean)))];
+    const cs = D.cs.slice().sort((a, b) => a.visitedAt - b.visitedAt);
+    const js = D.js.slice().sort((a, b) => a.startedAt - b.startedAt);
+    return `
+      <section class="day">
+        <header class="day-head">
+          <span class="dnum">${pad(d.getDate())}</span>
+          <span class="dd"><strong>${WEEKDAYS[d.getDay()]}</strong><small>Tháng ${d.getMonth() + 1}, ${d.getFullYear()}</small></span>
+          ${regs.slice(0, 2).map(r => `<span class="badge">${esc(r)}</span>`).join('')}
+        </header>
+        ${js.map(j => `<button type="button" class="jstrip" data-journey="${j.id}">
+            <span class="thumb">${routeSvg(j, 54, 54)}</span>
+            <span><span class="ttl">${esc(j.name)} ${j.status !== 'done' ? '<span class="badge">Đang ghi</span>' : ''}${j.demo ? ' <span class="badge beige">Mẫu</span>' : ''}</span>
+              <span class="nums"><span>${icon('route')}${km(j.distance)}</span><span>${icon('clock')}${dur(elapsed(j))}</span><span>${icon('pin')}${jCheckins(j.id).length}</span></span></span>
+            ${icon('chevron')}
+          </button>`).join('')}
+        ${cs.length ? `<div class="rail">${cs.map(c => {
+          const cat = catOf(c);
+          const ph = c.photoIds.slice(0, 3);
+          const more = c.photoIds.length - 3;
+          return `<div class="stop"><span class="time">${dTime(c.visitedAt)}</span>
+            <button type="button" class="card mcard" data-ci="${c.id}">
+              ${ph.length ? `<span class="photos">${ph.map((p, i) => `<span class="${i === 2 && more > 0 ? 'more' : ''}" data-more="+${more}"><img data-photo="${p}" alt=""></span>`).join('')}</span>` : ''}
+              <span class="body">
+                <span class="top">
+                  <span class="cat">${cat.e}</span>
+                  <span class="t"><span class="ttl">${esc(c.name)}</span><span class="sub">${cat.label}${c.price != null ? ' · ' + PRICES[c.price] : ''}${c.rating ? ' · ' + '♥'.repeat(c.rating) : ''}${c.demo ? ' · mẫu' : ''}</span></span>
+                  ${c.mood ? `<span class="mood" title="${MOOD[c.mood].l}">${MOOD[c.mood].e}</span>` : ''}${avatar(c)}
                 </span>
-              </button></div>`;
-          }).join('')}</div>` : ''}
-        </section>`;
-    }).join('');
+                ${c.memory ? `<span class="memo">${esc(c.memory)}</span>` : ''}
+                ${c.feedback ? `<span class="fb">${esc(c.feedback)}</span>` : ''}
+                ${c.draft ? `<span class="todo">${icon('edit')}Chưa bổ sung. Chạm để thêm tên, ảnh, cảm nhận.</span>` : ''}
+              </span>
+            </button></div>`;
+        }).join('')}</div>` : ''}
+      </section>`;
+  }
+
+  function renderDiary() {
+    calInit();
+    const idx = dayIndex();
+    renderCal(idx);
+    const el = $('#diaryList');
+    const { y, m, day } = S.cal;
+    const prefix = `${y}-${pad(m + 1)}-`;
+    if (!S.checkins.length && !S.journeys.length) {
+      el.innerHTML = emptyState('book', 'Nhật ký còn trống', 'Mỗi lần check-in sẽ hiện ở đây theo từng ngày, có chấm trên lịch.', true);
+      return;
+    }
+    const keys = [...idx.keys()].filter(k => (day ? k === day : k.startsWith(prefix))).sort().reverse();
+    const addBtn = day ? `<button type="button" class="btn line" data-addday="${day}">${icon('plus')}Thêm kỉ niệm cho ngày này</button>` : '';
+    if (!keys.length) {
+      const all = [...idx.keys()].sort();
+      const before = all.filter(k => k < prefix + '00').pop(), after = all.find(k => k > prefix + '99');
+      const jump = k => { const d = new Date(`${k}T12:00:00`); return `<button type="button" class="btn soft sm" data-jump="${k}">Tháng ${d.getMonth() + 1}, ${d.getFullYear()}</button>`; };
+      el.innerHTML = `<div class="empty-state">
+        <span class="art">${icon('calendar')}</span>
+        <h3>${day ? 'Ngày này chưa có kỉ niệm' : 'Tháng này chưa có kỉ niệm'}</h3>
+        <p>${day ? 'Bạn có thể thêm lại một nơi đã đến vào ngày này.' : 'Chuyển tới tháng gần nhất có kỉ niệm:'}</p>
+        <div class="row">${day ? addBtn : (before ? jump(before) : '') + (after ? jump(after) : '')}</div>
+      </div>`;
+      return;
+    }
+    el.innerHTML = keys.map(k => dayHtml(idx.get(k))).join('') + addBtn;
     hydratePhotos(el);
+  }
+
+  function addForDay(day) {
+    S.pickDate = new Date(`${day}T12:00:00`).getTime();
+    pickNew();
+    toast('Đặt ghim vào nơi bạn đã đến hôm đó');
   }
 
   function openJourney(id) {
@@ -1493,7 +1870,7 @@
       if (act === 'save') {
         j.name = $('#jName').value.trim() || j.name;
         j.note = $('#jNote').value.trim();
-        await DB.put('journeys', j);
+        await saveRec('journeys', j);
         drawRoutes();
         bump();
         toast('Đã lưu');
@@ -1530,66 +1907,88 @@
     $('#view-map').classList.remove('has-focus');
   }
 
-  /* ================= Địa điểm: sổ tay theo tỉnh/thành ================= */
-  function renderPlaces() {
-    const P = places();
-    const counts = {};
-    P.forEach(p => { counts[p.cat] = (counts[p.cat] || 0) + 1; });
-    const opts = [{ id: 'all', label: `Tất cả · ${P.length}` }, { id: 'fav', label: '♥ Yêu thích' }, { id: 'again', label: 'Đáng quay lại' }]
-      .concat(CATS.filter(c => counts[c.id]).map(c => ({ id: c.id, label: `${c.e} ${c.label} · ${counts[c.id]}` })));
-    $('#placeFilters').innerHTML = opts.map(o => `<button type="button" class="chip ${S.placeCat === o.id ? 'is-on' : ''}" data-pcat="${o.id}">${o.label}</button>`).join('');
-
-    const el = $('#placeList');
-    if (!P.length) {
-      el.innerHTML = emptyState('bookmark', 'Chưa có địa điểm nào', 'Quán ăn, quán cà phê, chỗ chơi bạn check-in sẽ được xếp gọn theo từng tỉnh thành ở đây.', true);
-      return;
-    }
-    const q = S.placeQuery.trim().toLowerCase();
-    const list = P.filter(p => {
-      if (S.placeCat === 'fav' && p.rating < 5) return false;
-      if (S.placeCat === 'again' && !p.tags.includes('Đáng quay lại')) return false;
-      if (!['all', 'fav', 'again'].includes(S.placeCat) && p.cat !== S.placeCat) return false;
-      return !q || [p.name, p.province, p.country, p.feedback, catOf(p).label, ...p.tags].join(' ').toLowerCase().includes(q);
-    });
-    if (!list.length) { el.innerHTML = emptyState('search', 'Không tìm thấy', 'Thử bỏ bớt bộ lọc hoặc tìm bằng từ khác.'); return; }
+  /* ================= Danh sách địa điểm: mở từ thẻ ở đáy bản đồ, theo vùng và bộ lọc đang xem ================= */
+  function placeRow(p) {
+    return `<button type="button" class="prow" data-ci="${p.latest.id}">
+      <span class="th">${p.photoId ? `<img data-photo="${p.photoId}" alt="">` : catOf(p).e}</span>
+      <span class="t">
+        <span class="ttl">${esc(p.name)}</span>
+        <span class="sub">${catOf(p).e} ${catOf(p).label}${p.price != null ? ' · ' + PRICES[p.price] : ''}${p.visits.length > 1 ? ` · ghé ${p.visits.length} lần` : ''}${p.demo ? ' · mẫu' : ''}</span>
+        ${p.feedback ? `<span class="fb">${esc(p.feedback)}</span>` : (p.tags.length ? `<span class="fb">${esc(p.tags.slice(0, 3).join(' · '))}</span>` : '')}
+      </span>
+      ${p.rating ? `<span class="score">${p.rating}${icon('heart')}</span>` : ''}
+    </button>`;
+  }
+  function openPlaceList() {
+    const k = S.scopeKey || '';
+    let list = shown(), title = 'Tất cả địa điểm';
+    if (k.startsWith('region:')) { const l = list.filter(p => rKey(p) === k.slice(7)); if (l.length) { list = l; title = rLabel(l[0]); } }
+    else if (k.startsWith('country:')) { const l = list.filter(p => cKey(p) === k.slice(8)); if (l.length) { list = l; title = cLabel(l[0]); } }
     const sorters = {
       recent: (a, b) => b.latest.visitedAt - a.latest.visitedAt,
       rating: (a, b) => b.rating - a.rating || b.visits.length - a.visits.length || b.latest.visitedAt - a.latest.visitedAt,
       name: (a, b) => a.name.localeCompare(b.name, 'vi')
     };
-    list.sort(sorters[S.placeSort]);
+    const rows = () => {
+      const sorted = list.slice().sort(sorters[S.placeSort]);
+      const regs = [...groupBy(sorted, rKey)];
+      if (regs.length < 2) return `<div class="rows">${sorted.map(placeRow).join('')}</div>`;
+      return regs.sort((a, b) => b[1].length - a[1].length).map(([, l]) => `<p class="sec-label">${l[0].cc && l[0].cc !== 'VN' ? flagOf(l[0]) + ' ' : ''}${esc(rLabel(l[0]))} · ${l.length}</p><div class="rows">${l.map(placeRow).join('')}</div>`).join('');
+    };
+    openSheet(`
+      <div class="sheet-head">
+        <h2>${esc(title)}</h2>
+        <button type="button" class="icon-btn" data-act="close" aria-label="Đóng">${icon('x')}</button>
+      </div>
+      <div class="list-tools">
+        <span class="foot-note left">${list.length} địa điểm${S.filter !== 'all' ? ' · đang lọc' : ''}</span>
+        <label class="select"><span class="sr">Sắp xếp</span>
+          <select id="plSort">
+            <option value="recent"${S.placeSort === 'recent' ? ' selected' : ''}>Mới ghé nhất</option>
+            <option value="rating"${S.placeSort === 'rating' ? ' selected' : ''}>Tim cao nhất</option>
+            <option value="name"${S.placeSort === 'name' ? ' selected' : ''}>Tên A–Z</option>
+          </select></label>
+      </div>
+      <div id="plRows" class="pl-rows">${rows()}</div>
+    `, '', 'places');
+    $('#plSort').onchange = e => { S.placeSort = e.target.value; $('#plRows').innerHTML = rows(); hydratePhotos($('#plRows')); };
+    $('#sheetInner').onclick = e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.ci) openDetail(b.dataset.ci);
+      else if (b.dataset.act === 'close') closeSheet();
+    };
+  }
 
-    const countries = [...groupBy(list, cKey)].sort((a, b) => (a[0] === 'VN' ? -1 : b[0] === 'VN' ? 1 : b[1].length - a[1].length));
-    el.innerHTML = countries.map(([, cl]) => {
-      const regs = [...groupBy(cl, rKey)].sort((a, b) => b[1].length - a[1].length);
-      return `
-        <p class="country-label"><span>${flagOf(cl[0])}</span>${esc(cLabel(cl[0]))} · ${regs.length} ${cl[0].cc === 'VN' ? 'tỉnh thành' : 'vùng'}</p>
-        ${regs.map(([rk, rl]) => {
-          const rated = rl.filter(p => p.rating);
-          const avg = rated.length ? rated.reduce((a, p) => a + p.rating, 0) / rated.length : 0;
-          return `<details class="card grp" open>
-            <summary>
-              <span class="nm"><b>${esc(rLabel(rl[0]))}</b><small>${rl.length} địa điểm${avg ? ` · ♥ ${nf1.format(avg)}` : ''}</small></span>
-              <button type="button" class="to-map" data-rk="${esc(rk)}" aria-label="Xem ${esc(rLabel(rl[0]))} trên bản đồ">${icon('map')}</button>
-              <span class="caret">${icon('down')}</span>
-            </summary>
-            <div class="rows">${rl.map(p => `
-              <button type="button" class="prow" data-ci="${p.latest.id}">
-                <span class="th">${p.photoId ? `<img data-photo="${p.photoId}" alt="">` : catOf(p).e}</span>
-                <span class="t">
-                  <span class="ttl">${esc(p.name)}</span>
-                  <span class="sub">${catOf(p).e} ${catOf(p).label}${p.price != null ? ' · ' + PRICES[p.price] : ''}${p.visits.length > 1 ? ` · ghé ${p.visits.length} lần` : ''}${p.demo ? ' · mẫu' : ''}</span>
-                  ${p.feedback ? `<span class="fb">${esc(p.feedback)}</span>` : (p.tags.length ? `<span class="fb">${esc(p.tags.slice(0, 3).join(' · '))}</span>` : '')}
-                </span>
-                ${p.rating ? `<span class="score">${p.rating}${icon('heart')}</span>` : ''}
-              </button>`).join('')}</div>
-          </details>`;
-        }).join('')}`;
+  /* ================= Album: tường ảnh theo tháng hoặc theo nơi ================= */
+  function renderAlbum() {
+    const el = $('#albumBody');
+    $$('[data-albummode]').forEach(b => b.classList.toggle('is-on', b.dataset.albummode === S.albumMode));
+    const withPhotos = S.checkins.filter(c => c.photoIds.length);
+    if (!withPhotos.length) {
+      el.innerHTML = emptyState('image', 'Album còn trống', 'Ảnh bạn thêm khi check-in sẽ được xếp thành album ở đây.', true);
+      S.albumIds = [];
+      return;
+    }
+    const monthKey = c => { const d = new Date(c.visitedAt); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+    const groups = S.albumMode === 'place'
+      ? [...groupBy(withPhotos, rKey)].map(([, l]) => ({ title: rLabel(l[0]), sub: cLabel(l[0]), list: l })).sort((a, b) => b.list.length - a.list.length)
+      : [...groupBy(withPhotos, monthKey)].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([k, l]) => ({ title: `Tháng ${+k.slice(5)}, ${k.slice(0, 4)}`, sub: [...new Set(l.map(rLabel))].slice(0, 3).join(' · '), list: l }));
+    const ids = [];
+    el.innerHTML = groups.map(g => {
+      const photos = g.list.flatMap(c => c.photoIds);
+      const start = ids.length;
+      ids.push(...photos);
+      return `<section class="alb">
+        <header><h2>${esc(g.title)}</h2><small>${photos.length} ảnh · ${esc(g.sub)}</small></header>
+        <div class="alb-grid">${photos.map((p, i) => `<button type="button" data-lb="${start + i}" class="${i === 0 && photos.length >= 3 ? 'big' : ''}"><img data-photo="${p}" data-size="${i === 0 ? 'full' : 'thumb'}" alt=""></button>`).join('')}</div>
+      </section>`;
     }).join('');
+    S.albumIds = ids;
     hydratePhotos(el);
   }
 
-  /* ================= Dấu chân: hộ chiếu + thống kê ================= */
+  /* ================= Tổng kết: hộ chiếu tỉnh thành + số liệu ================= */
   function vnSvg(groups) {
     const minLng = 101.8, maxLat = 23.7, k = 0.96, s = 20;
     const W = (115.3 - minLng) * k * s, H = (maxLat - 7.9) * s;
@@ -1609,6 +2008,23 @@
     </svg>`;
   }
 
+  /* --- ai đăng: chữ cái đầu tên trong vòng tròn màu --- */
+  const AV_COLORS = ['#C24E78', '#B08968', '#5FA98A', '#9C7BC0'];
+  function avatarOf(id, name) {
+    let h = 0;
+    for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return `<span class="av" style="--c:${AV_COLORS[h % AV_COLORS.length]}" title="${esc(name)}">${esc((name || '?').trim().charAt(0).toUpperCase())}</span>`;
+  }
+  function authors() {
+    if (S._authorsRev !== S.rev) { S._authors = new Set(S.checkins.map(c => c.by).filter(Boolean)); S._authorsRev = S.rev; }
+    return S._authors;
+  }
+  const byName = c => Sync.nameOf(c.by, c.byName || '');
+  function avatar(c) {
+    if (!c.by || !(Sync.on || authors().size > 1)) return '';
+    return avatarOf(c.by, byName(c) || '?');
+  }
+
   function renderMe() {
     const el = $('#meBody');
     const J = S.journeys, C = S.checkins, P = places();
@@ -1618,7 +2034,7 @@
           <div class="l"><span class="lbl">Việt Nam của bạn</span><span class="big">0<small>/${Geo.UNITS.length}</small></span><span class="cap">tỉnh thành đã đặt chân</span>
             <button type="button" class="btn soft sm" data-act="demo">${icon('sparkle')}Xem thử dữ liệu mẫu</button></div>
           ${vnSvg([])}
-        </section>` + dataPanel();
+        </section><div id="shareBox">${sharePanel()}</div>` + dataPanel();
       return;
     }
     const vn = P.filter(p => p.cc === 'VN');
@@ -1626,9 +2042,10 @@
     const visited = new Map(vnGroups.map(([, l]) => [l[0].province, l.length]));
     const countries = [...groupBy(P, cKey)].sort((a, b) => b[1].length - a[1].length);
     const dist = J.reduce((a, j) => a + j.distance, 0);
-    const moving = J.reduce((a, j) => a + elapsed(j), 0);
     const photos = C.reduce((a, c) => a + c.photoIds.length, 0);
     const days = new Set(C.map(c => dayKey(c.visitedAt)).concat(J.map(j => dayKey(j.startedAt)))).size;
+    const first = chrono()[0];
+    const since = first ? Math.max(0, Math.floor((Date.now() - first.visitedAt) / 86400000)) : 0;
 
     const byCat = CATS.map(c => ({ ...c, n: P.filter(x => x.cat === c.id).length })).filter(c => c.n).sort((a, b) => b.n - a.n);
     const maxCat = Math.max(1, ...byCat.map(c => c.n));
@@ -1639,12 +2056,9 @@
     const maxM = Math.max(1, ...months.map(m => m.n));
     const rated = P.filter(p => p.rating);
     const avg = rated.length ? rated.reduce((a, p) => a + p.rating, 0) / rated.length : 0;
-    const dist5 = [5, 4, 3, 2, 1].map(r => ({ r, n: rated.filter(p => p.rating === r).length }));
-    const maxR = Math.max(1, ...dist5.map(d => d.n));
-    const top = rated.slice().sort((a, b) => b.rating - a.rating || b.visits.length - a.visits.length || b.photos - a.photos).slice(0, 5);
-    const longest = J.filter(j => j.status === 'done').sort((a, b) => b.distance - a.distance)[0];
+    const top = rated.slice().sort((a, b) => b.rating - a.rating || b.visits.length - a.visits.length || b.photos - a.photos).slice(0, 3);
     const moodN = MOODS.map(m => ({ ...m, n: C.filter(c => c.mood === m.v).length }));
-    const again = P.filter(p => p.tags.includes('Đáng quay lại')).length;
+    const people = [...groupBy(C.filter(c => c.by), c => c.by)];
 
     const regionBlock = r => {
       const units = Geo.UNITS.filter(u => u.region === r);
@@ -1658,15 +2072,29 @@
     el.innerHTML = `
       <section class="card passport">
         <div class="l">
-          <span class="lbl">Việt Nam của bạn</span>
+          <span class="lbl">Việt Nam của ${people.length > 1 || Sync.on ? 'hai đứa' : 'bạn'}</span>
           <span class="big">${visited.size}<small>/${Geo.UNITS.length}</small></span>
           <span class="cap">tỉnh thành đã đặt chân</span>
           <div class="meter"><span style="width:${(visited.size / Geo.UNITS.length) * 100}%"></span></div>
-          <span class="mini">${countries.length} quốc gia · ${P.length} địa điểm · ${kmNum(dist)} km</span>
+          <span class="mini">${first ? `${nf.format(since)} ngày kể từ lần check-in đầu tiên (${dDate(first.visitedAt)})` : ''}</span>
           <button type="button" class="btn primary sm" data-act="home">${icon('vn')}Mở bản đồ chữ S</button>
         </div>
         ${vnSvg(vnGroups)}
       </section>
+
+      <div class="bignums">
+        <div><b>${P.length}</b><span>địa điểm</span></div>
+        <div><b>${countries.length}</b><span>quốc gia</span></div>
+        <div><b>${photos}</b><span>ảnh</span></div>
+        <div><b>${days}</b><span>ngày đi chơi</span></div>
+      </div>
+
+      <div id="shareBox">${sharePanel()}</div>
+
+      ${people.length > 1 ? `<section class="card panel">
+        <h2>Ai check-in nhiều hơn?</h2>
+        <div class="bars">${people.sort((a, b) => b[1].length - a[1].length).map(([id, l]) => `<div class="bar-row who"><span class="name">${avatarOf(id, byName(l[0]) || '?')}${esc(byName(l[0]) || 'Chưa rõ')}</span><span class="track"><span class="fill" style="width:${(l.length / C.length) * 100}%"></span></span><span class="n">${l.length}</span></div>`).join('')}</div>
+      </section>` : ''}
 
       <section class="card panel stamps">
         <h2>Sổ đóng dấu <small>chạm dấu để mở bản đồ</small></h2>
@@ -1675,50 +2103,25 @@
           <div class="chips">${countries.filter(([ck]) => ck !== 'VN').map(([ck, l]) => `<button type="button" class="stamp on" data-cc="${esc(ck)}">${flagOf(l[0])} ${esc(cLabel(l[0]))}<i>${l.length}</i></button>`).join('')}</div>` : ''}
       </section>
 
-      <div class="tiles">
-        <div class="card tile"><b>${kmNum(dist)}</b><span>km đã ghi</span></div>
-        <div class="card tile"><b>${nf.format(Math.round(dist / STRIDE_M))}</b><span>Bước chân</span></div>
-        <div class="card tile"><b>${J.length}</b><span>Hành trình</span></div>
-        <div class="card tile"><b>${C.length}</b><span>Lượt check-in</span></div>
-        <div class="card tile"><b>${photos}</b><span>Ảnh kỉ niệm</span></div>
-        <div class="card tile"><b>${days}</b><span>Ngày khám phá</span></div>
-      </div>
+      <section class="card panel">
+        <h2>Check-in theo tháng <small>6 tháng gần đây</small></h2>
+        <div class="cols">${months.map(m => `<button type="button" class="col" data-month="${m.y}-${m.m}"><div class="stack" style="height:100%"><span class="v ${m.n ? '' : 'zero'}" style="height:${m.n ? Math.max(6, (m.n / maxM) * 100) : 2}%"></span>${m.n ? `<span class="num" style="bottom:${Math.max(6, (m.n / maxM) * 100)}%">${m.n}</span>` : ''}</div><span class="m">T${m.m + 1}</span></button>`).join('')}</div>
+        <p class="foot-note left">Chạm một cột để mở tháng đó trong Nhật ký.${dist ? ` Đã ghi ${kmNum(dist)} km đường đi bằng GPS.` : ''}</p>
+      </section>
 
       ${byCat.length ? `<section class="card panel">
-        <h2>Bạn hay đi đâu nhất? <small>${byCat[0].e} ${byCat[0].label}</small></h2>
+        <h2>Hay đi đâu nhất? <small>${rated.length ? `tim trung bình ${nf1.format(avg)}/5` : ''}</small></h2>
         <div class="bars">${byCat.map(c => `<div class="bar-row"><span class="name">${c.e} ${c.label}</span><span class="track"><span class="fill" style="width:${(c.n / maxCat) * 100}%"></span></span><span class="n">${c.n}</span></div>`).join('')}</div>
       </section>` : ''}
 
-      <section class="card panel">
-        <h2>Check-in theo tháng <small>6 tháng gần đây</small></h2>
-        <div class="cols">${months.map(m => `<div class="col"><div class="stack" style="height:100%"><span class="v ${m.n ? '' : 'zero'}" style="height:${m.n ? Math.max(6, (m.n / maxM) * 100) : 2}%"></span>${m.n ? `<span class="num" style="bottom:${Math.max(6, (m.n / maxM) * 100)}%">${m.n}</span>` : ''}</div><span class="m">T${m.m + 1}</span></div>`).join('')}</div>
-        ${moving ? `<p class="foot-note left">Tổng thời gian di chuyển đã ghi: <b>${dur(moving)}</b></p>` : ''}
-      </section>
-
-      ${rated.length ? `<section class="card panel">
-        <h2>Feedback của bạn <small>${rated.length} nơi đã chấm</small></h2>
-        <div class="rate-row"><span class="rate-big">${nf1.format(avg)}<small> /5</small></span>${hearts(Math.round(avg))}</div>
-        <div class="bars">${dist5.map(d => `<div class="bar-row"><span class="name">${'♥'.repeat(d.r)}</span><span class="track"><span class="fill" style="width:${(d.n / maxR) * 100}%"></span></span><span class="n">${d.n}</span></div>`).join('')}</div>
-        ${again ? `<p class="foot-note left">${again} nơi bạn đánh dấu “Đáng quay lại”.</p>` : ''}
-      </section>` : ''}
-
       ${top.length ? `<section class="card panel">
-        <h2>Nơi bạn thương nhất</h2>
+        <h2>Ba nơi thương nhất</h2>
         <div class="top-list">${top.map((p, i) => `
           <button type="button" class="top-item" data-ci="${p.latest.id}">
             <span class="rank">${i + 1}</span>
             ${p.photoId ? `<img data-photo="${p.photoId}" alt="">` : `<span class="ph">${catOf(p).e}</span>`}
             <span class="t"><b>${esc(p.name)}</b><small>${'♥'.repeat(p.rating)} · ${esc(rLabel(p))}${p.visits.length > 1 ? ` · ghé ${p.visits.length} lần` : ''}</small></span>
           </button>`).join('')}</div>
-      </section>` : ''}
-
-      ${longest ? `<section class="card panel">
-        <h2>Hành trình dài nhất</h2>
-        <button type="button" class="jstrip" data-journey="${longest.id}">
-          <span class="thumb">${routeSvg(longest, 54, 54)}</span>
-          <span><span class="ttl">${esc(longest.name)}</span><span class="nums"><span>${icon('route')}${km(longest.distance)}</span><span>${icon('clock')}${dur(longest.activeMs)}</span><span>${icon('calendar')}${dDate(longest.startedAt)}</span></span></span>
-          ${icon('chevron')}
-        </button>
       </section>` : ''}
 
       ${moodN.some(m => m.n) ? `<section class="card panel">
@@ -1729,6 +2132,161 @@
       ${dataPanel()}
     `;
     hydratePhotos(el);
+  }
+
+  /* ================= Dùng chung hai người ================= */
+  const RULES = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /spaces/{space}/{coll}/{doc} {
+      allow read, write: if space.size() >= 18;
+    }
+  }
+}`;
+
+  function sharePanel() {
+    if (!Sync.on) {
+      return `<section class="card panel share">
+        <h2>Dùng chung hai người</h2>
+        <p class="foot-note left">Cả hai cùng thấy và cùng thêm check-in, ảnh, kỉ niệm trên một bản đồ. Dữ liệu chung được lưu trong dự án Firebase miễn phí của bạn.</p>
+        <div><button type="button" class="btn primary sm" data-act="share">${icon('heart')}Thiết lập dùng chung</button></div>
+      </section>`;
+    }
+    const me = Sync.profile || {};
+    const members = Object.entries(Sync.members);
+    if (!members.some(([id]) => id === me.id) && me.id) members.unshift([me.id, { name: me.name }]);
+    const bad = Sync.status === 'error';
+    const status = bad ? 'Có lỗi' : Sync.status === 'connecting' ? 'Đang kết nối…' : Sync.pending ? `Đang gửi ${Sync.pending} thay đổi…` : 'Đã đồng bộ';
+    return `<section class="card panel share">
+      <h2>Dùng chung <small class="sync ${bad ? 'bad' : ''}"><i></i>${status}</small></h2>
+      <div class="people">${members.map(([id, m]) => `<span class="person">${avatarOf(id, m.name)}${esc(m.name || 'Chưa đặt tên')}${id === me.id ? ' <em>(bạn)</em>' : ''}</span>`).join('')}</div>
+      ${members.length < 2 ? '<p class="foot-note left">Chưa có ai khác. Gửi mã mời cho người ấy, rồi người ấy mở app, vào Tổng kết → Thiết lập dùng chung → Mình có mã mời.</p>' : ''}
+      ${bad ? `<p class="foot-note left bad">${esc(Sync.error)}</p>` : ''}
+      <div class="data-actions">
+        <button type="button" class="btn primary sm" data-share="copy">Sao chép mã mời</button>
+        <button type="button" class="btn line sm" data-act="share">Quản lý</button>
+      </div>
+    </section>`;
+  }
+  function refreshShare() {
+    const box = $('#shareBox');
+    if (box) box.innerHTML = sharePanel();
+  }
+  async function copyText(text, okMsg) {
+    try { await navigator.clipboard.writeText(text); toast(okMsg); }
+    catch { const t = $('#shCode'); if (t) { t.focus(); t.select(); toast('Hãy giữ vào ô mã và chọn Sao chép'); } else toast('Không sao chép được, hãy mở Quản lý để chép tay'); }
+  }
+
+  /** Check-in tạo trước khi bật dùng chung chưa có tên người đăng: ghi là của người đang dùng máy này. */
+  async function claimMine() {
+    const me = Sync.profile;
+    if (!me) return;
+    for (const c of await DB.all('checkins')) {
+      if (c.by || c.demo) continue;
+      c.by = me.id; c.byName = me.name; c.updatedAt = Date.now();
+      await saveRec('checkins', c);
+    }
+  }
+
+  function openShare(step) {
+    const me = Sync.profile || {};
+    const nameField = `<div class="field"><label for="shName">Tên của bạn <span class="hint">· hiện cạnh mỗi check-in bạn đăng</span></label><input class="input" id="shName" value="${esc(me.name || '')}" placeholder="VD: Dương" maxlength="30" autocomplete="off"></div>`;
+    const head = (title, back) => `<div class="sheet-head">${back ? `<button type="button" class="icon-btn" data-sh="back" aria-label="Quay lại">${icon('back')}</button>` : ''}<h2>${title}</h2><button type="button" class="icon-btn" data-sh="close" aria-label="Đóng">${icon('x')}</button></div>`;
+    const busy = (on, label) => { const b = $('#sheetFoot .btn.primary'); if (b) { b.disabled = on; b.textContent = on ? 'Đang kết nối…' : label; } };
+    const finish = async (err, label) => {
+      busy(false, label);
+      if (err) { const e = $('#shErr'); e.textContent = err; e.hidden = false; e.scrollIntoView({ block: 'center' }); return; }
+      await claimMine();
+      await reloadData();
+      toast('Đã bật dùng chung');
+      openShare();
+    };
+
+    if (Sync.on) {
+      openSheet(`
+        ${head('Dùng chung')}
+        ${nameField}
+        <div class="field">
+          <label for="shCode">Mã mời <span class="hint">· gửi cho người ấy qua Zalo, iMessage…</span></label>
+          <textarea class="input code" id="shCode" readonly rows="4">${esc(Sync.inviteCode())}</textarea>
+          <p class="foot-note left">Ai có mã này đều xem và sửa được dữ liệu chung, nên chỉ gửi cho đúng người.</p>
+        </div>
+        <div class="data-actions">
+          <button type="button" class="btn primary sm" data-sh="copy">Sao chép mã mời</button>
+          <button type="button" class="btn line sm" data-sh="retry">Đồng bộ lại</button>
+        </div>
+        <button type="button" class="btn ghost sm" data-sh="leave" style="color:var(--danger)">Ngừng dùng chung trên máy này</button>
+      `, '', 'share');
+      $('#shName').onchange = async e => { if (await Sync.setProfile(e.target.value)) { toast('Đã đổi tên'); bump(); } };
+    } else if (step === 'create') {
+      openSheet(`
+        ${head('Tạo không gian chung', true)}
+        ${nameField}
+        <details class="more" open>
+          <summary>Tạo Firebase (làm một lần, khoảng 10 phút)${icon('down')}</summary>
+          <div class="in guide">
+            <ol>
+              <li>Mở <b>console.firebase.google.com</b>, đăng nhập Google, bấm <b>Create a project</b>. Đặt tên bất kỳ, tắt Google Analytics, bấm Create.</li>
+              <li>Menu trái: <b>Build → Firestore Database → Create database</b>. Chọn vị trí gần Việt Nam (ví dụ asia-southeast1), chọn <b>production mode</b>, bấm Create.</li>
+              <li>Vào thẻ <b>Rules</b>, xoá hết nội dung cũ, dán đoạn dưới đây rồi bấm <b>Publish</b>.</li>
+            </ol>
+            <textarea class="input code" id="shRules" readonly rows="8">${esc(RULES)}</textarea>
+            <button type="button" class="btn line sm" data-sh="copyrules">Sao chép đoạn Rules</button>
+            <ol start="4">
+              <li>Bấm biểu tượng bánh răng → <b>Project settings</b>. Kéo xuống mục <b>Your apps</b>, bấm biểu tượng <b>&lt;/&gt;</b> (Web), đặt tên, bấm Register app.</li>
+              <li>Sao chép cả đoạn <b>firebaseConfig = { … }</b> hiện ra và dán vào ô bên dưới.</li>
+            </ol>
+          </div>
+        </details>
+        <div class="field">
+          <label for="shCfg">Đoạn firebaseConfig</label>
+          <textarea class="input code" id="shCfg" rows="6" placeholder='const firebaseConfig = {&#10;  apiKey: "…",&#10;  projectId: "…",&#10;  appId: "…"&#10;};'></textarea>
+        </div>
+        <p class="foot-note left bad" id="shErr" hidden></p>
+      `, `<button type="button" class="btn primary" data-sh="docreate">Tạo không gian chung</button>`, 'share');
+    } else if (step === 'join') {
+      openSheet(`
+        ${head('Vào bằng mã mời', true)}
+        ${nameField}
+        <div class="field">
+          <label for="shInv">Mã mời <span class="hint">· người ấy gửi cho bạn, bắt đầu bằng OJ1.</span></label>
+          <textarea class="input code" id="shInv" rows="4" placeholder="OJ1.…"></textarea>
+        </div>
+        <p class="foot-note left">Các check-in đang có trên máy này sẽ được gộp vào không gian chung.</p>
+        <p class="foot-note left bad" id="shErr" hidden></p>
+      `, `<button type="button" class="btn primary" data-sh="dojoin">Tham gia</button>`, 'share');
+    } else {
+      openSheet(`
+        ${head('Dùng chung hai người')}
+        <p class="foot-note left">Hai máy cùng thấy một bản đồ, một nhật ký. Mỗi check-in ghi rõ ai đăng. Khi mất mạng app vẫn dùng được và tự gửi lên khi có mạng lại.</p>
+        <div class="choice">
+          <button type="button" data-sh="create"><span class="ic">${icon('plus')}</span><span class="t"><b>Mình tạo mới</b><small>Người đầu tiên: tạo Firebase rồi gửi mã mời cho người kia</small></span>${icon('chevron')}</button>
+          <button type="button" data-sh="join"><span class="ic">${icon('heart')}</span><span class="t"><b>Mình có mã mời</b><small>Người thứ hai: dán mã mời là xong</small></span>${icon('chevron')}</button>
+        </div>
+      `, '', 'share');
+    }
+
+    const onClick = async e => {
+      const b = e.target.closest('[data-sh]');
+      if (!b) return;
+      const a = b.dataset.sh;
+      if (a === 'close') closeSheet();
+      else if (a === 'back') openShare();
+      else if (a === 'create' || a === 'join') openShare(a);
+      else if (a === 'copy') copyText(Sync.inviteCode(), 'Đã sao chép mã mời');
+      else if (a === 'copyrules') { try { await navigator.clipboard.writeText(RULES); toast('Đã sao chép đoạn Rules'); } catch { const t = $('#shRules'); t.focus(); t.select(); } }
+      else if (a === 'retry') { await Sync.retry(); toast(Sync.status === 'error' ? Sync.error : 'Đang đồng bộ'); }
+      else if (a === 'leave') {
+        if (!(await ask('Ngừng dùng chung?', 'Máy này sẽ thôi nhận và gửi thay đổi. Dữ liệu đang có trên máy vẫn được giữ.', 'Ngừng', true))) return;
+        await Sync.leave();
+        closeSheet();
+        bump();
+        toast('Đã ngừng dùng chung trên máy này');
+      } else if (a === 'docreate') { busy(true); finish(await Sync.create($('#shCfg').value, $('#shName').value), 'Tạo không gian chung'); }
+      else if (a === 'dojoin') { busy(true); finish(await Sync.join($('#shInv').value, $('#shName').value), 'Tham gia'); }
+    };
+    $('#sheetInner').onclick = onClick;
+    $('#sheetFoot').onclick = onClick;
   }
 
   function dataPanel() {
@@ -1764,14 +2322,14 @@
     toast('Đang chuẩn bị bản sao lưu…');
     const photos = await DB.all('photos');
     const out = {
-      app: 'dau-chan-hong', version: 2, exportedAt: new Date().toISOString(),
+      app: 'our-journey', version: 3, exportedAt: new Date().toISOString(),
       journeys: await DB.all('journeys'), checkins: await DB.all('checkins'),
       photos: await Promise.all(photos.map(async p => ({ id: p.id, checkinId: p.checkinId, createdAt: p.createdAt, demo: p.demo, blob: await blobToData(p.blob), thumb: await blobToData(p.thumb || p.blob) })))
     };
     const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `dau-chan-hong-${dayKey(Date.now())}.json`;
+    a.download = `our-journey-${dayKey(Date.now())}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1781,15 +2339,15 @@
   async function importData(file) {
     try {
       const data = JSON.parse(await file.text());
-      if (data.app !== 'dau-chan-hong') throw new Error('not ours');
-      for (const p of data.photos || []) await DB.put('photos', { ...p, blob: await dataToBlob(p.blob), thumb: await dataToBlob(p.thumb) });
-      for (const c of data.checkins || []) await DB.put('checkins', c);
-      for (const j of data.journeys || []) await DB.put('journeys', j.status === 'done' ? j : { ...j, status: 'done', resumedAt: null, endedAt: j.endedAt || Date.now() });
+      if (!['dau-chan-hong', 'our-journey'].includes(data.app)) throw new Error('not ours');
+      for (const p of data.photos || []) await saveRec('photos', { ...p, blob: await dataToBlob(p.blob), thumb: await dataToBlob(p.thumb) });
+      for (const c of data.checkins || []) await saveRec('checkins', c);
+      for (const j of data.journeys || []) await saveRec('journeys', j.status === 'done' ? j : { ...j, status: 'done', resumedAt: null, endedAt: j.endedAt || Date.now() });
       await loadAll();
       backfillRegions();
       toast(`Đã khôi phục ${(data.checkins || []).length} check-in, ${(data.journeys || []).length} hành trình`);
     } catch {
-      toast('Tệp này không phải bản sao lưu của Dấu Chân Hồng');
+      toast('Tệp này không phải bản sao lưu của Our Journey');
     }
   }
   async function addDemo() {
@@ -1798,6 +2356,7 @@
     for (const p of d.photos) await DB.put('photos', p);
     for (const c of d.checkins) await DB.put('checkins', c);
     for (const j of d.journeys) await DB.put('journeys', j);
+    S.cal = null;
     await loadAll();
     if (S.view === 'map') showS();
     toast('Đã thêm các chuyến đi mẫu dọc chữ S');
@@ -1813,8 +2372,12 @@
     toast('Đã xoá dữ liệu mẫu');
   }
   async function wipeAll() {
-    if (!(await ask('Xoá toàn bộ dữ liệu?', 'Tất cả hành trình, check-in và ảnh sẽ bị xoá khỏi máy này. Không thể hoàn tác.', 'Xoá hết'))) return;
+    if (!(await ask('Xoá toàn bộ dữ liệu?', 'Tất cả hành trình, check-in và ảnh sẽ bị xoá khỏi máy này. Nếu đang dùng chung, máy này sẽ ngừng dùng chung; dữ liệu trên máy người kia không bị xoá.', 'Xoá hết'))) return;
+    if (Sync.on) await Sync.leave(); // chỉ xoá trên máy này, không xoá dữ liệu chung
+    stopReplay();
+    hideQuick();
     if (S.active) { stopWatch(); wake(false); S.active = null; }
+    S.cal = null;
     await Promise.all(['journeys', 'checkins', 'photos'].map(s => DB.clear(s)));
     urlCache.forEach(u => URL.revokeObjectURL(u));
     urlCache.clear();
@@ -1864,24 +2427,27 @@
 
   /* ================= Điều hướng & vẽ lại ================= */
   function go(view) {
-    closeFab();
+    closeMenu();
     S.view = view;
     $$('.view').forEach(v => v.classList.toggle('is-active', v.dataset.view === view));
     $$('.tab[data-go]').forEach(t => t.classList.toggle('is-on', t.dataset.go === view));
+    if (view !== 'map') stopReplay();
     if (view === 'map') { map.invalidateSize(); renderScope(); }
     renderRec();
     renderView();
   }
   function renderView() {
     if (S.view === 'diary') renderDiary();
-    else if (S.view === 'places') renderPlaces();
+    else if (S.view === 'album') renderAlbum();
     else if (S.view === 'me') renderMe();
   }
   /** Dữ liệu vừa đổi: tính lại danh sách địa điểm và vẽ lại mọi thứ đang hiển thị. */
   function bump() {
     S.rev++;
     S._places = null;
+    renderFilters();
     drawPins();
+    drawTrail();
     renderScope();
     renderRec();
     renderView();
@@ -1916,13 +2482,13 @@
     openSheet(`
       <div class="onboard">
         <img class="logo" src="icons/icon.svg" alt="">
-        <h2>Dấu Chân Hồng</h2>
-        <p>Bản đồ chữ S của riêng bạn. Mỗi nơi đã đến là một chiếc ghim.</p>
+        <h2>Our Journey</h2>
+        <p>Bản đồ chữ S của hai đứa. Mỗi nơi đã đến là một chiếc ghim.</p>
         <ul>
-          ${li('map', 'Bản đồ', 'Ghim gom theo quốc gia, tỉnh thành. Phóng to để thấy từng quán.')}
-          ${li('book', 'Nhật ký', 'Hành trình, ảnh và kỉ niệm xếp theo từng ngày.')}
-          ${li('bookmark', 'Địa điểm', 'Quán ăn, chỗ chơi kèm feedback, gọn theo tỉnh thành.')}
-          ${li('award', 'Dấu chân', 'Đã đi bao nhiêu trong 34 tỉnh thành, bao nhiêu km.')}
+          ${li('plus', 'Một chạm là check-in', 'Bấm nút + để lưu ngay chỗ đang đứng. Tên, ảnh, cảm nhận bổ sung sau.')}
+          ${li('map', 'Bản đồ', 'Ghim gom theo tỉnh thành, có đường nối theo thứ tự thời gian.')}
+          ${li('book', 'Nhật ký', 'Lịch tháng có chấm ở những ngày có kỉ niệm.')}
+          ${li('heart', 'Dùng chung', 'Hai người cùng thấy và cùng thêm trên một bản đồ.')}
         </ul>
       </div>
     `, `
@@ -1940,9 +2506,7 @@
   /* ================= Gắn sự kiện ================= */
   function bind() {
     $$('.tab[data-go]').forEach(t => t.onclick = () => go(t.dataset.go));
-    $('#btnAdd').onclick = () => ($('#fabMenu').hidden ? openFab() : closeFab());
-    $('#fabScrim').onclick = closeFab;
-    $('#fabMenu').onclick = e => { const b = e.target.closest('[data-act]'); if (b) { closeFab(); doAct(b.dataset.act); } };
+    $('#btnAdd').onclick = quickCheckin;
     $('#scrim').onclick = dismissSheet;
     window.addEventListener('popstate', () => {
       if (S.ignorePop > 0) { S.ignorePop--; return; }
@@ -1951,6 +2515,11 @@
       S.sheetHist = false;
     });
 
+    // Thẻ check-in nhanh
+    $('#quickCard').onclick = e => { const b = e.target.closest('[data-q],[data-q-rate]'); if (b) quickAct(b); };
+    $('#quickFile').onchange = e => { const files = [...e.target.files]; e.target.value = ''; quickPhotos(files); };
+
+    // Bản đồ
     $('#recBar').onclick = e => { const b = e.target.closest('[data-act]'); if (b) doAct(b.dataset.act); };
     $('#scopeCard').onclick = e => {
       const b = e.target.closest('button');
@@ -1960,22 +2529,19 @@
       else if (b.dataset.place) { const p = placeOf(b.dataset.place); if (p) flyPlace(p); }
       else if (b.dataset.act) doAct(b.dataset.act);
     };
-
+    $('#mapFilters').onclick = e => { const b = e.target.closest('[data-filter]'); if (b) { S.filter = b.dataset.filter; bump(); } };
     $('#btnHome').onclick = () => showS();
     $('#btnLocate').onclick = () => { S.follow = true; $('#btnLocate').classList.add('is-on'); locateOnce(true); };
-    $('#btnLayers').onclick = () => {
-      const m = $('#layerMenu');
-      m.innerHTML = Object.entries(TILES).map(([k, t]) => `<button type="button" data-tile="${k}" class="${S.tile === k ? 'is-on' : ''}">${t.name}${S.tile === k ? icon('check') : ''}</button>`).join('');
-      m.hidden = !m.hidden;
-    };
+    $('#btnLayers').onclick = () => ($('#layerMenu').hidden ? openMenu() : closeMenu());
     $('#layerMenu').onclick = e => {
-      const b = e.target.closest('[data-tile]');
+      const b = e.target.closest('button');
       if (!b) return;
-      setTile(b.dataset.tile);
-      DB.setMeta('tile', S.tile).catch(() => {});
-      $('#layerMenu').hidden = true;
+      closeMenu();
+      if (b.dataset.tile) { setTile(b.dataset.tile); DB.setMeta('tile', S.tile).catch(() => {}); }
+      else doAct(b.dataset.act);
     };
     $('#focusClose').onclick = unfocus;
+    $('#replayStop').onclick = stopReplay;
     $('#pickOk').onclick = () => endPick(true);
     $('#pickCancel').onclick = () => endPick(false);
 
@@ -1990,44 +2556,54 @@
       else showSearchResult(+b.dataset.lat, +b.dataset.lng, b.dataset.name, b.dataset.addr);
     };
 
-    // Nhật ký
+    // Nhật ký: lịch
+    const cal = $('#calBox');
+    cal.onclick = e => {
+      const b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      const c = S.cal;
+      if (b.dataset.day) calGo(c.y, c.m, c.day === b.dataset.day ? null : b.dataset.day);
+      else if (b.dataset.cal === 'prev') calGo(c.y, c.m - 1);
+      else if (b.dataset.cal === 'next') calGo(c.y, c.m + 1);
+      else if (b.dataset.cal === 'toggle') calGo(c.y, c.m);
+      else if (b.dataset.cal === 'today') { const d = new Date(); calGo(d.getFullYear(), d.getMonth()); }
+    };
+    let sx = null;
+    cal.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+    cal.addEventListener('touchend', e => {
+      if (sx === null) return;
+      const dx = e.changedTouches[0].clientX - sx;
+      sx = null;
+      if (Math.abs(dx) > 60) calGo(S.cal.y, S.cal.m + (dx < 0 ? 1 : -1));
+    }, { passive: true });
     $('#diaryList').onclick = e => {
-      const b = e.target.closest('[data-ci],[data-lb],[data-journey]');
+      const b = e.target.closest('[data-ci],[data-journey],[data-addday],[data-jump]');
       if (!b) return;
       if (b.dataset.ci) openDetail(b.dataset.ci);
       else if (b.dataset.journey) openJourney(b.dataset.journey);
-      else { const ids = JSON.parse($('#diaryList').dataset.ids || '[]'); openLightbox(ids, +b.dataset.lb, i => photoCaption(ids[i])); }
+      else if (b.dataset.addday) addForDay(b.dataset.addday);
+      else if (b.dataset.jump) { const d = new Date(`${b.dataset.jump}T12:00:00`); calGo(d.getFullYear(), d.getMonth()); }
     };
-    $('#diaryFilters').onclick = e => { const b = e.target.closest('[data-reg]'); if (b) { S.diaryReg = b.dataset.reg; renderDiary(); } };
-    $('#diarySearch').oninput = e => { S.diaryQuery = e.target.value; renderDiary(); };
-    $$('[data-diarymode]').forEach(b => b.onclick = () => {
-      S.diaryMode = b.dataset.diarymode;
-      $$('[data-diarymode]').forEach(x => x.classList.toggle('is-on', x === b));
-      renderDiary();
-    });
 
-    // Địa điểm
-    $('#placeList').onclick = e => {
-      const m = e.target.closest('.to-map');
-      if (m) { e.preventDefault(); go('map'); flyRegion(m.dataset.rk); return; }
-      const b = e.target.closest('[data-ci]');
-      if (b) openDetail(b.dataset.ci);
+    // Album
+    $('#albumBody').onclick = e => {
+      const b = e.target.closest('[data-lb]');
+      if (b) openLightbox(S.albumIds, +b.dataset.lb, i => photoCaption(S.albumIds[i]));
     };
-    $('#placeFilters').onclick = e => { const b = e.target.closest('[data-pcat]'); if (b) { S.placeCat = b.dataset.pcat; renderPlaces(); } };
-    $('#placeSearch').oninput = e => { S.placeQuery = e.target.value; renderPlaces(); };
-    $('#placeSort').onchange = e => { S.placeSort = e.target.value; renderPlaces(); };
+    $$('[data-albummode]').forEach(b => b.onclick = () => { S.albumMode = b.dataset.albummode; renderAlbum(); });
 
-    // Dấu chân
+    // Tổng kết
     $('#meBody').onclick = e => {
-      const b = e.target.closest('[data-ci],[data-journey],[data-rk],[data-cc]');
+      const b = e.target.closest('[data-ci],[data-rk],[data-cc],[data-month],[data-share]');
       if (!b) return;
       if (b.dataset.ci) openDetail(b.dataset.ci);
-      else if (b.dataset.journey) openJourney(b.dataset.journey);
       else if (b.dataset.rk) { go('map'); flyRegion(b.dataset.rk); }
       else if (b.dataset.cc) { go('map'); flyCountry(b.dataset.cc); }
+      else if (b.dataset.month) { const [y, m] = b.dataset.month.split('-').map(Number); S.cal = { y, m, day: null }; go('diary'); }
+      else if (b.dataset.share === 'copy') copyText(Sync.inviteCode(), 'Đã sao chép mã mời');
     };
 
-    // Các nút hành động chung nằm trong trang (dữ liệu mẫu, sao lưu…)
+    // Các nút hành động chung nằm trong trang (dữ liệu mẫu, sao lưu, dùng chung…)
     document.addEventListener('click', e => {
       const b = e.target.closest('.page [data-act]');
       if (b) doAct(b.dataset.act);
@@ -2035,11 +2611,17 @@
     $('#fileImport').onchange = e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ''; };
 
     $('#lbClose').onclick = () => { $('#lightbox').hidden = true; };
+    $('#lbCap').onclick = () => {
+      const pid = S.lb && S.lb.ids[S.lb.i];
+      const c = pid && S.checkins.find(x => x.photoIds.includes(pid));
+      if (c) { $('#lightbox').hidden = true; openDetail(c.id); }
+    };
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
       if (!$('#lightbox').hidden) $('#lightbox').hidden = true;
-      else if (!$('#fabMenu').hidden) closeFab();
+      else if (!$('#layerMenu').hidden) closeMenu();
       else if (S.sheetOpen) dismissSheet();
+      else if (S.replay) stopReplay();
     });
 
     setInterval(() => { if (S.active?.status === 'active' && S.view === 'map') renderRec(); }, 1000);
@@ -2052,6 +2634,11 @@
   }
 
   /* ================= Khởi động ================= */
+  /** Người kia vừa thêm/sửa gì đó: nạp lại từ bộ nhớ máy và vẽ lại. */
+  async function reloadData() {
+    try { await loadAll(); } catch { /* bỏ qua */ }
+  }
+
   async function init() {
     hydrateIcons();
     $('#vnUnits').innerHTML = Geo.UNITS.map(u => `<option value="${esc(u.name)}">`).join('');
@@ -2061,6 +2648,8 @@
       await DB.open();
       const tile = await DB.getMeta('tile', 'voyager');
       if (tile !== S.tile) setTile(tile);
+      S.trail = await DB.getMeta('trail', true);
+      await Sync.init({ onChange: reloadData, onStatus: refreshShare });
       await loadAll();
     } catch {
       toast('Trình duyệt chặn bộ nhớ cục bộ, dữ liệu sẽ không được lưu.');

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-  <title>Dấu Chân Hồng</title>
-  <meta name="description" content="Bản đồ chữ S của riêng bạn: ghi hành trình, check-in và lưu kỉ niệm.">
+  <title>Our Journey</title>
+  <meta name="description" content="Bản đồ chữ S của hai đứa: check-in một chạm, nhật ký theo lịch, album ảnh và dùng chung.">
   <meta name="theme-color" content="#FBE6EC">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Dấu Chân">
+  <meta name="apple-mobile-web-app-title" content="Our Journey">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -34,17 +34,23 @@
           <button type="button" class="search-clear" id="searchClear" hidden aria-label="Xoá tìm kiếm"><span data-icon="x"></span></button>
         </form>
         <ul class="glass search-results" id="searchResults" hidden></ul>
+        <div class="chips map-filters" id="mapFilters" hidden></div>
         <div class="glass focus-banner" id="focusBanner" hidden>
           <span data-icon="route"></span>
           <span class="focus-title" id="focusTitle"></span>
           <button type="button" class="chip-btn" id="focusClose">Đóng</button>
+        </div>
+        <div class="glass focus-banner" id="replayBar" hidden>
+          <span data-icon="play"></span>
+          <span class="focus-title" id="replayTitle"></span>
+          <button type="button" class="chip-btn" id="replayStop">Dừng</button>
         </div>
       </div>
 
       <div class="map-tools">
         <button type="button" class="glass round-btn" id="btnHome" aria-label="Về bản đồ chữ S" title="Bản đồ chữ S"><span data-icon="vn"></span></button>
         <button type="button" class="glass round-btn" id="btnLocate" aria-label="Về vị trí của tôi" title="Vị trí của tôi"><span data-icon="locate"></span></button>
-        <button type="button" class="glass round-btn" id="btnLayers" aria-label="Kiểu bản đồ" title="Kiểu bản đồ"><span data-icon="layers"></span></button>
+        <button type="button" class="glass round-btn" id="btnLayers" aria-label="Tuỳ chọn bản đồ" title="Tuỳ chọn bản đồ"><span data-icon="layers"></span></button>
         <div class="glass layer-menu" id="layerMenu" hidden></div>
       </div>
 
@@ -67,49 +73,32 @@
     <!-- ============ NHẬT KÝ: khi nào ============ -->
     <section class="view page" id="view-diary" data-view="diary">
       <header class="page-head">
+        <div class="head-row"><h1>Nhật ký</h1></div>
+      </header>
+      <div class="page-body">
+        <div class="card cal" id="calBox"></div>
+        <div class="diary-list" id="diaryList"></div>
+      </div>
+    </section>
+
+    <!-- ============ ALBUM: ảnh ============ -->
+    <section class="view page" id="view-album" data-view="album">
+      <header class="page-head">
         <div class="head-row">
-          <h1>Nhật ký</h1>
-          <div class="seg" role="tablist" aria-label="Kiểu xem">
-            <button type="button" class="is-on" data-diarymode="timeline">Theo ngày</button>
-            <button type="button" data-diarymode="album">Album</button>
+          <h1>Album</h1>
+          <div class="seg" role="tablist" aria-label="Xếp ảnh theo">
+            <button type="button" class="is-on" data-albummode="month">Theo tháng</button>
+            <button type="button" data-albummode="place">Theo nơi</button>
           </div>
         </div>
-        <label class="search small">
-          <span class="ico" data-icon="search"></span>
-          <input id="diarySearch" type="search" placeholder="Tìm trong nhật ký…" autocomplete="off">
-        </label>
-        <div class="chips scroll-x" id="diaryFilters"></div>
       </header>
-      <div class="page-body" id="diaryList"></div>
+      <div class="page-body" id="albumBody"></div>
     </section>
 
-    <!-- ============ ĐỊA ĐIỂM: nơi nào đáng nhớ ============ -->
-    <section class="view page" id="view-places" data-view="places">
-      <header class="page-head">
-        <div class="head-row">
-          <h1>Địa điểm</h1>
-          <label class="select">
-            <span class="sr">Sắp xếp</span>
-            <select id="placeSort">
-              <option value="recent">Mới ghé nhất</option>
-              <option value="rating">Tim cao nhất</option>
-              <option value="name">Tên A–Z</option>
-            </select>
-          </label>
-        </div>
-        <label class="search small">
-          <span class="ico" data-icon="search"></span>
-          <input id="placeSearch" type="search" placeholder="Tìm quán ăn, chỗ chơi…" autocomplete="off">
-        </label>
-        <div class="chips scroll-x" id="placeFilters"></div>
-      </header>
-      <div class="page-body" id="placeList"></div>
-    </section>
-
-    <!-- ============ DẤU CHÂN: đã đi được bao nhiêu ============ -->
+    <!-- ============ TỔNG KẾT: đã đi được bao nhiêu, dùng chung ============ -->
     <section class="view page" id="view-me" data-view="me">
       <header class="page-head">
-        <div class="head-row"><h1>Dấu chân</h1></div>
+        <div class="head-row"><h1>Tổng kết</h1></div>
       </header>
       <div class="page-body" id="meBody"></div>
     </section>
@@ -117,15 +106,15 @@
     <!-- ============ THANH TAB ============ -->
     <nav class="glass tabbar" aria-label="Điều hướng">
       <button type="button" class="tab is-on" data-go="map"><span data-icon="map"></span><b>Bản đồ</b></button>
-      <button type="button" class="tab" data-go="diary"><span data-icon="book"></span><b>Nhật ký</b></button>
-      <button type="button" class="tab tab-main" id="btnAdd" aria-label="Tạo mới" aria-expanded="false"><span class="fab"><span data-icon="plus"></span></span></button>
-      <button type="button" class="tab" data-go="places"><span data-icon="bookmark"></span><b>Địa điểm</b></button>
-      <button type="button" class="tab" data-go="me"><span data-icon="award"></span><b>Dấu chân</b></button>
+      <button type="button" class="tab" data-go="diary"><span data-icon="calendar"></span><b>Nhật ký</b></button>
+      <button type="button" class="tab tab-main" id="btnAdd" aria-label="Check-in ngay tại đây"><span class="fab"><span data-icon="pinplus"></span></span><b>Check-in</b></button>
+      <button type="button" class="tab" data-go="album"><span data-icon="image"></span><b>Album</b></button>
+      <button type="button" class="tab" data-go="me"><span data-icon="award"></span><b>Tổng kết</b></button>
     </nav>
 
-    <!-- Menu tạo mới -->
-    <div class="fab-scrim" id="fabScrim" hidden></div>
-    <div class="glass fab-menu" id="fabMenu" hidden></div>
+    <!-- Thẻ check-in nhanh -->
+    <div class="glass quick-card" id="quickCard" hidden></div>
+    <input type="file" id="quickFile" accept="image/*" multiple hidden>
 
     <!-- Bottom sheet dùng chung -->
     <div class="scrim" id="scrim" hidden></div>
@@ -151,7 +140,7 @@
     <div class="lightbox" id="lightbox" hidden>
       <button type="button" class="lb-close" id="lbClose" aria-label="Đóng"><span data-icon="x"></span></button>
       <div class="lb-track" id="lbTrack"></div>
-      <p class="lb-cap" id="lbCap"></p>
+      <button type="button" class="lb-cap" id="lbCap"></button>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -164,6 +153,7 @@
   <script src="js/vn-shape.js"></script>
   <script src="js/geo.js"></script>
   <script src="js/db.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/demo.js"></script>
   <script src="js/app.js"></script>
 </body>

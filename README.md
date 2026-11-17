@@ -1,77 +1,92 @@
-# Dấu Chân Hồng
+# Our Journey
 
-Web app chạy trên điện thoại: bản đồ chữ S của riêng bạn. Mỗi nơi đã đến là một chiếc ghim, gom theo quốc gia, tỉnh thành, và phóng to để thấy từng quán. Giao diện kính mờ (glass), tông hồng, trắng và be.
+Web app chạy trên điện thoại: bản đồ chữ S của hai đứa. Mỗi nơi đã đến là một chiếc ghim, có đường nối theo thứ tự thời gian, nhật ký theo lịch, album ảnh, và hai người dùng chung được.
 
-## App được chia thế nào
+## Dùng thế nào
 
-| Tab | Trả lời câu hỏi | Có gì |
-| --- | --- | --- |
-| **Bản đồ** | Mình đã đến những đâu? | Bản đồ thật, mặc định vừa khung Việt Nam. Ghim tự gom theo cấp: thế giới → quốc gia → tỉnh/thành → từng địa điểm. |
-| **Nhật ký** | Hôm đó mình đã làm gì? | Mọi thứ theo từng ngày: lộ trình đã ghi, các điểm check-in theo giờ, ảnh và kỉ niệm. Có chế độ Album. |
-| **Địa điểm** | Quán nào đáng quay lại? | Sổ tay quán ăn, chỗ chơi kèm feedback, xếp theo tỉnh/thành. Lọc theo loại, yêu thích, “đáng quay lại”. |
-| **Dấu chân** | Mình đã đi được bao nhiêu? | Hộ chiếu 34 tỉnh thành, sổ đóng dấu theo miền, số km, biểu đồ, top nơi yêu thích. Sao lưu dữ liệu. |
+- **Nút Check-in ở giữa**: bấm một lần là lưu ngay vị trí và giờ hiện tại. Tên, ảnh, cảm nhận bổ sung sau.
+  - Đứng gần một nơi đã từng ghé (trong 100 m) thì app tự lấy tên nơi đó và nhắc lại lần trước: ngày, số tim, feedback.
+  - Nơi mới thì app tự tìm tên quán, địa chỉ, tỉnh thành khi có mạng.
+  - Thẻ nhỏ hiện ra sau khi check-in để chấm tim, thêm ảnh, bổ sung hoặc hoàn tác.
+- **Bản đồ**: mặc định vừa khung Việt Nam. Ghim gom theo quốc gia → tỉnh/thành → từng địa điểm khi phóng to.
+  - Đường nối các điểm theo thứ tự thời gian, số nhỏ trên mỗi tỉnh là thứ tự đặt chân. Nút **Phát lại** vẽ lại cả hành trình từ điểm đầu tiên.
+  - Hàng bộ lọc (yêu thích, đáng quay lại, quán ăn, cà phê…) lọc cả ghim lẫn danh sách. Nút **Danh sách** mở sổ địa điểm kèm feedback của vùng đang xem.
+  - Nút tuỳ chọn (góc phải): kiểu bản đồ, bật/tắt đường nối, ghim một nơi khác, ghi đường đi bằng GPS.
+- **Nhật ký**: lịch tháng, ngày có kỉ niệm được tô màu kèm số lượng. Bấm một ngày thì lịch thu lại còn một tuần và hiện kỉ niệm ngày đó bên dưới. Có nút thêm kỉ niệm cho một ngày cũ.
+- **Album**: toàn bộ ảnh, xếp theo tháng hoặc theo nơi.
+- **Tổng kết**: đã đi mấy trên 34 tỉnh thành, sổ đóng dấu theo miền, số liệu, phần dùng chung và sao lưu.
 
-Nút **+** ở giữa gom mọi thao tác tạo mới: check-in tại chỗ, ghim một điểm trên bản đồ, bắt đầu/tạm dừng/kết thúc ghi hành trình.
+## Dùng chung hai người
 
-## Bản đồ theo cấp zoom
+Dữ liệu luôn nằm trong máy (dùng được khi mất mạng). Khi bật dùng chung, mỗi thay đổi được gửi lên Cloud Firestore của **dự án Firebase do bạn tạo**, và máy kia nhận về. Mỗi check-in ghi rõ ai đăng.
 
-- **Thu nhỏ hết cỡ**: mỗi quốc gia một bong bóng (cờ + số địa điểm).
-- **Bản đồ chữ S** (mặc định): mỗi tỉnh/thành đã đến một bong bóng. Thẻ ở đáy cho biết đã đi mấy trên 34 tỉnh thành.
-- **Phóng to vào một tỉnh**: ghim từng địa điểm, các điểm sát nhau gom thành cụm; lộ trình đã ghi hiện dạng nét đứt.
-- **Phóng to nữa**: ghim hiện ảnh và tên địa điểm.
+### Người thứ nhất: tạo Firebase (một lần, khoảng 10 phút)
 
-Thẻ ở đáy bản đồ luôn đi theo vùng đang xem (Thế giới › Việt Nam › Lâm Đồng); chạm vào từng cấp để nhảy tới đó.
+1. Mở <https://console.firebase.google.com>, đăng nhập Google, bấm **Create a project**. Đặt tên bất kỳ, tắt Google Analytics, bấm Create.
+2. Menu trái: **Build → Firestore Database → Create database**. Chọn vị trí gần Việt Nam (ví dụ `asia-southeast1`), chọn **production mode**, bấm Create.
+3. Vào thẻ **Rules**, xoá hết nội dung cũ, dán đoạn dưới rồi bấm **Publish**:
 
-Tỉnh/thành theo đơn vị hành chính sau sáp nhập 1/7/2025 (34 tỉnh thành). Tên tỉnh cũ được tự quy về đơn vị mới (ví dụ Hội An → Đà Nẵng, Mũi Né → Lâm Đồng). App nhận tỉnh từ dịch vụ bản đồ khi có mạng, và tự đoán theo vị trí khi không có mạng; bạn có thể sửa tay trong phần “Thêm chi tiết” khi check-in.
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /spaces/{space}/{coll}/{doc} {
+         allow read, write: if space.size() >= 18;
+       }
+     }
+   }
+   ```
 
-## Check-in
+4. Bấm biểu tượng bánh răng → **Project settings**. Ở mục **Your apps**, bấm biểu tượng `</>` (Web), đặt tên, bấm Register app.
+5. Sao chép cả đoạn `firebaseConfig = { … }`.
+6. Trong app: **Tổng kết → Thiết lập dùng chung → Mình tạo mới**. Nhập tên, dán đoạn `firebaseConfig`, bấm **Tạo không gian chung**.
+7. Bấm **Sao chép mã mời** và gửi cho người kia.
 
-- Vị trí lấy từ GPS, bấm giữ trên bản đồ, kết quả tìm kiếm, hoặc tự đặt ghim.
-- Tên quán, địa chỉ, loại địa điểm và tỉnh/thành được điền sẵn khi có thể. Nơi đã từng ghé được gợi ý lại.
-- Ảnh (tối đa 12, tự nén), chấm tim 1–5, feedback, kỉ niệm.
-- Thêm chi tiết: mức giá, thẻ nhận xét nhanh, tâm trạng, thời gian.
-- Ghé lại một nơi nhiều lần được gộp thành một địa điểm với nhiều lần ghé.
+Tên các nút trong Firebase console có thể khác đôi chút theo thời gian.
 
-## Ghi hành trình
+### Người thứ hai
 
-Bắt đầu, tạm dừng, tiếp tục, kết thúc. Lộ trình vẽ trực tiếp trên bản đồ, kèm quãng đường, thời gian, tốc độ trung bình và số bước chân ước tính. App tự bỏ qua điểm GPS nhiễu.
+Mở app → **Tổng kết → Thiết lập dùng chung → Mình có mã mời** → nhập tên, dán mã mời → **Tham gia**.
 
-> Web app chỉ ghi được GPS khi màn hình đang mở và app đang hiển thị. App tự giữ màn hình sáng khi đang ghi nếu trình duyệt hỗ trợ.
+Nếu cài app ra màn hình chính iPhone thì làm các bước này trong app đã cài, vì app đã cài có bộ nhớ riêng, tách khỏi Safari.
 
-## Dữ liệu
+### Cần biết
 
-Mọi thứ nằm ngay trên máy (IndexedDB), không cần tài khoản. Có sao lưu/khôi phục ra tệp `.json` kèm ảnh, và bộ dữ liệu mẫu để xem thử.
+- Không gian chung được bảo vệ bằng một mã ngẫu nhiên dài nằm trong mã mời. **Ai có mã mời đều xem và sửa được dữ liệu chung**, nên chỉ gửi cho đúng người.
+- Ảnh được lưu thẳng trong Firestore (mỗi ảnh tối đa khoảng 0,9 MB, app tự nén). Gói miễn phí của Firebase có 1 GB, đủ cho vài nghìn ảnh.
+- Dữ liệu mẫu và hành trình GPS đang ghi dở không được gửi đi.
+- “Xoá tất cả” chỉ xoá trên máy đang dùng và ngừng dùng chung trên máy đó.
 
-## Chạy thử trên máy
+## Cài lên điện thoại
+
+Mở link GitHub Pages của repo này bằng Safari (iPhone) hoặc Chrome (Android), rồi chọn **Thêm vào Màn hình chính**. Trình duyệt chỉ cho dùng GPS khi trang chạy qua HTTPS.
+
+> Ghi đường đi bằng GPS chỉ hoạt động khi màn hình đang mở và app đang hiển thị. Check-in thì không cần.
+
+## Chạy thử trên máy tính
 
 ```bash
 python3 -m http.server 8080
 # mở http://localhost:8080
 ```
 
-## Dùng trên điện thoại
-
-Trình duyệt chỉ cho truy cập GPS khi trang chạy qua **HTTPS**. Cách nhanh nhất là bật **GitHub Pages** cho repo này
-(Settings → Pages → Deploy from a branch → chọn nhánh và thư mục `/`), rồi mở link đó trên điện thoại:
-
-- iPhone (Safari): nút Chia sẻ → *Thêm vào MH chính*
-- Android (Chrome): menu ⋮ → *Cài đặt ứng dụng*
-
-Đây là trang tĩnh, không cần build, nên cũng có thể đưa lên Netlify, Vercel, Cloudflare Pages.
-
 ## Cấu trúc
 
 ```
 index.html            khung giao diện
-css/style.css         giao diện glass (token màu hồng, trắng, be)
-js/app.js             bản đồ, GPS, check-in, nhật ký, địa điểm, dấu chân
+css/style.css         giao diện glass (hồng, trắng, be)
+js/app.js             bản đồ, check-in, nhật ký, album, tổng kết
+js/sync.js            dùng chung qua Firebase (Cloud Firestore)
 js/geo.js             34 tỉnh thành, quy đổi tên cũ, nhận diện tỉnh/quốc gia
 js/vn-shape.js        đường viền Việt Nam (Natural Earth, dữ liệu công cộng)
-js/db.js              lưu trữ IndexedDB
+js/db.js              lưu trữ trong máy (IndexedDB)
 js/demo.js            dữ liệu mẫu
 js/icons.js           bộ icon SVG
-sw.js                 service worker (offline)
+sw.js                 service worker (mở được khi mất mạng)
 vendor/leaflet/       thư viện bản đồ Leaflet 1.9.4
+vendor/firebase/      Firebase JS SDK 10.14.1 (chỉ tải khi bật dùng chung)
 ```
+
+Tỉnh/thành theo đơn vị hành chính sau sáp nhập 1/7/2025 (34 tỉnh thành); tên tỉnh cũ được tự quy về đơn vị mới.
 
 Dịch vụ dùng: ô bản đồ © OpenStreetMap contributors, © CARTO, ảnh vệ tinh © Esri; tìm kiếm và lấy địa chỉ qua Nominatim (OpenStreetMap).
