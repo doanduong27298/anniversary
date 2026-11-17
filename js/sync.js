@@ -2,7 +2,7 @@
    Dữ liệu vẫn nằm trong máy (IndexedDB) để dùng được khi mất mạng; phần này chỉ đẩy thay đổi lên
    và nhận thay đổi của người kia về. Mỗi "không gian chung" là một mã bí mật: ai có mã mời thì vào được. */
 const Sync = (() => {
-  const STORES = ['checkins', 'journeys', 'photos'];
+  const STORES = ['checkins', 'journeys', 'photos', 'trips'];
   const MAX_PHOTO = 900000;   // giới hạn một tài liệu Firestore là 1 MiB
   const MAX_THUMB = 110000;
   const st = {

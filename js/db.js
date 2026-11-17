@@ -1,7 +1,7 @@
-/* Lưu trữ cục bộ bằng IndexedDB: hành trình, check-in, ảnh (Blob). */
+/* Lưu trữ cục bộ bằng IndexedDB: check-in, cung đường, ảnh (Blob), hành trình GPS, đường đi đã tính. */
 const DB = (() => {
   const NAME = 'dau-chan-hong';
-  const VERSION = 1;
+  const VERSION = 2;
   let dbPromise;
 
   function open() {
@@ -20,6 +20,8 @@ const DB = (() => {
           s.createIndex('checkinId', 'checkinId');
         }
         if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('trips')) db.createObjectStore('trips', { keyPath: 'id' });   // cung đường
+        if (!db.objectStoreNames.contains('routes')) db.createObjectStore('routes', { keyPath: 'key' }); // đường đi đã tính sẵn
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

@@ -699,3 +699,66 @@ button.col { width: 100%; }
 .map-tools { z-index: 805; }
 .layer-menu { max-height: 62vh; overflow-y: auto; }
 #shRules { white-space: pre; overflow-x: auto; word-break: normal; }
+
+/* =====================================================================
+   v4: Cung đường (chuyến đi có tên, tổng kết theo chặng), đường vẽ rõ hơn
+   ===================================================================== */
+
+/* Bản đồ gọn lại: hàng bộ lọc chỉ hiện khi đang lọc */
+.map-tools { top: calc(var(--safe-t) + 76px); }
+.view-map.has-focus .map-tools { top: calc(var(--safe-t) + 128px); }
+.map-filters .chip .i { width: 13px; height: 13px; }
+.focus-title { cursor: pointer; }
+
+/* Đường đi: mũi tên theo màu cung, số chặng */
+.arrow { border-left-color: var(--c, var(--pink-deep)); border-left-width: 11px; border-top-width: 6.5px; border-bottom-width: 6.5px; filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1px #fff); }
+.stage-no { width: 24px; height: 24px; border-radius: 50%; background: var(--c, var(--pink-deep)); color: #fff; font-size: 12px; font-weight: 800; display: inline-grid; place-items: center; border: 2.5px solid #fff; box-shadow: 0 3px 8px -2px rgba(62, 42, 48, .5); flex: none; font-variant-numeric: tabular-nums; }
+.mk .stage-no { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); cursor: pointer; }
+.replay-dot { background: radial-gradient(circle at 35% 30%, #fff, var(--c, var(--pink-deep)) 60%); }
+.leaflet-interactive { cursor: pointer; }
+
+/* Thanh cung đang đi trên bản đồ */
+.trip-bar { padding: 8px 8px 8px 14px; }
+.trip-bar .chip-btn { background: var(--pink-soft); flex: none; height: 34px; }
+.trip-bar .nums b { margin-left: 2px; }
+
+/* Trang Cung đường */
+.btn.block { width: 100%; }
+.trip-live { padding: 16px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); background: linear-gradient(140deg, rgba(255, 255, 255, .8), rgba(251, 220, 230, .75) 60%, rgba(245, 234, 221, .85)); }
+.trip-live .lbl { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--pink-deep); }
+.trip-live h2 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.trip-live .row { display: flex; gap: 10px; }
+.trip-live .row .btn { flex: 1; padding: 0 10px; }
+.tcard { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 12px; align-items: center; width: 100%; }
+.tcard .thumb { width: 92px; height: 92px; border-radius: 16px; background: var(--tint-beige); overflow: hidden; }
+.tcard .thumb svg { width: 100%; height: 100%; display: block; }
+.tcard .meta { min-width: 0; display: grid; gap: 4px; }
+.tcard .ttl { font-size: 16.5px; font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard .date { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard .nums { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tcard .nums span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tcard .nums .i { width: 15px; height: 15px; color: var(--pink-deep); }
+.sug { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border-style: dashed; border-color: rgba(236, 127, 162, .5); }
+.sug .t { flex: 1; min-width: 0; display: grid; }
+.sug b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sug small { font-size: 12.5px; color: var(--muted); }
+.page-body > .sec-label { margin: 6px 0 -6px; }
+
+/* Tổng kết một cung: các chặng */
+.stage { border-radius: 18px; background: rgba(255, 255, 255, .6); border: 1px solid rgba(231, 213, 194, .6); overflow: hidden; }
+.stage > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px; cursor: pointer; }
+.stage > summary::-webkit-details-marker { display: none; }
+.stage > summary .t { flex: 1; min-width: 0; display: grid; }
+.stage > summary b { font-size: 14.5px; }
+.stage > summary small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage > summary .kmv { font-size: 14px; font-weight: 800; color: var(--pink-deep); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stage > summary > .i { width: 18px; height: 18px; color: var(--muted); transition: transform .2s; }
+.stage[open] > summary > .i { transform: rotate(180deg); }
+.stops { display: grid; gap: 4px; padding: 0 10px 12px; grid-template-columns: minmax(0, 1fr); }
+.leg { display: flex; align-items: center; gap: 6px; padding-left: 19px; font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.leg .i { width: 13px; height: 13px; color: var(--pink); }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.two .field label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.select.wide, .select.wide select { width: 100%; }
+.select.wide select { height: 48px; border-radius: 15px; font-size: 15px; background-color: var(--tint); border-color: transparent; color: var(--ink); font-weight: 500; }
+button.badge.trip { background: var(--c, var(--pink-deep)); color: #fff; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }

@@ -59,6 +59,7 @@
       <div class="map-bottom">
         <p class="attrib" id="attrib"></p>
         <div class="glass rec-bar" id="recBar" hidden></div>
+        <div class="glass rec-bar trip-bar" id="tripBar" hidden></div>
         <div class="glass scope-card" id="scopeCard"></div>
         <div class="glass pick-bar" id="pickBar" hidden>
           <p>Kéo bản đồ để đặt ghim vào đúng chỗ</p>
@@ -70,29 +71,36 @@
       </div>
     </section>
 
-    <!-- ============ NHẬT KÝ: khi nào ============ -->
+    <!-- ============ CUNG ĐƯỜNG: mỗi chuyến đi ============ -->
+    <section class="view page" id="view-trips" data-view="trips">
+      <header class="page-head">
+        <div class="head-row"><h1>Cung đường</h1></div>
+      </header>
+      <div class="page-body" id="tripsBody"></div>
+    </section>
+
+    <!-- ============ NHẬT KÝ: khi nào (lịch + album ảnh) ============ -->
     <section class="view page" id="view-diary" data-view="diary">
       <header class="page-head">
-        <div class="head-row"><h1>Nhật ký</h1></div>
+        <div class="head-row">
+          <h1>Nhật ký</h1>
+          <div class="seg" role="tablist" aria-label="Kiểu xem">
+            <button type="button" class="is-on" data-diarymode="cal">Lịch</button>
+            <button type="button" data-diarymode="album">Ảnh</button>
+          </div>
+        </div>
       </header>
       <div class="page-body">
         <div class="card cal" id="calBox"></div>
         <div class="diary-list" id="diaryList"></div>
-      </div>
-    </section>
-
-    <!-- ============ ALBUM: ảnh ============ -->
-    <section class="view page" id="view-album" data-view="album">
-      <header class="page-head">
-        <div class="head-row">
-          <h1>Album</h1>
+        <div class="diary-list" id="albumBox" hidden>
           <div class="seg" role="tablist" aria-label="Xếp ảnh theo">
             <button type="button" class="is-on" data-albummode="month">Theo tháng</button>
             <button type="button" data-albummode="place">Theo nơi</button>
           </div>
+          <div class="diary-list" id="albumBody"></div>
         </div>
-      </header>
-      <div class="page-body" id="albumBody"></div>
+      </div>
     </section>
 
     <!-- ============ TỔNG KẾT: đã đi được bao nhiêu, dùng chung ============ -->
@@ -106,9 +114,9 @@
     <!-- ============ THANH TAB ============ -->
     <nav class="glass tabbar" aria-label="Điều hướng">
       <button type="button" class="tab is-on" data-go="map"><span data-icon="map"></span><b>Bản đồ</b></button>
-      <button type="button" class="tab" data-go="diary"><span data-icon="calendar"></span><b>Nhật ký</b></button>
+      <button type="button" class="tab" data-go="trips"><span data-icon="route"></span><b>Cung đường</b></button>
       <button type="button" class="tab tab-main" id="btnAdd" aria-label="Check-in ngay tại đây"><span class="fab"><span data-icon="pinplus"></span></span><b>Check-in</b></button>
-      <button type="button" class="tab" data-go="album"><span data-icon="image"></span><b>Album</b></button>
+      <button type="button" class="tab" data-go="diary"><span data-icon="calendar"></span><b>Nhật ký</b></button>
       <button type="button" class="tab" data-go="me"><span data-icon="award"></span><b>Tổng kết</b></button>
     </nav>
 

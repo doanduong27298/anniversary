@@ -1,4 +1,4 @@
-/* Dữ liệu mẫu: vài chuyến đi trải dọc chữ S và một chuyến nước ngoài.
+/* Dữ liệu mẫu: vài cung trải dọc chữ S, vài check-in lẻ và một chuyến nước ngoài.
    Mọi bản ghi đều có demo:true để có thể xoá riêng. Ảnh là hình minh hoạ vẽ bằng canvas. */
 const Demo = (() => {
   const at = (iso, h, m = 0) => new Date(`${iso}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+07:00`).getTime();
@@ -19,21 +19,21 @@ const Demo = (() => {
       ]
     },
     {
-      name: 'Hội An một ngày nắng', note: 'Đạp xe từ phố cổ ra biển, nắng vàng như mật.', region: { province: 'Đà Nẵng', ...VN }, route: true, speed: 3.2, stops: [
+      name: 'Hội An một ngày nắng', trip: 'Hội An một ngày nắng', note: 'Đạp xe từ phố cổ ra biển, nắng vàng như mật.', region: { province: 'Đà Nẵng', ...VN }, route: true, speed: 3.2, stops: [
         { name: 'Chùa Cầu', cat: 'sight', lat: 15.8771, lng: 108.3260, t: ['2026-09-26', 8, 10], rating: 5, price: 1, mood: 4, tags: ['Chụp ảnh đẹp', 'Đông đúc'], feedback: 'Sau 9 giờ rất đông khách đoàn. Vé tham quan phố cổ dùng được cho 5 điểm.', memory: 'Phố còn vắng, đèn lồng chưa tắt hết.', p: [['#F5D08A', '#F8D9E2', '🏮'], ['#F8D9E2', '#F3E8DA', '🌉']] },
         { name: 'Cơm gà phố Hội', cat: 'food', lat: 15.8776, lng: 108.3282, t: ['2026-09-26', 11, 15], rating: 5, price: 1, mood: 5, tags: ['Đồ ăn ngon', 'Đáng quay lại', 'Giá hợp lý'], feedback: 'Cơm vàng nghệ, gà xé trộn rau răm, thêm chén lòng mề. 45k một phần.', memory: '', p: [['#F6DFA6', '#FBE3EA', '🍗']] },
         { name: 'Bãi biển An Bàng', cat: 'nature', lat: 15.9140, lng: 108.3410, t: ['2026-09-26', 15, 30], rating: 4, price: 1, mood: 3, tags: ['View đẹp', 'Yên tĩnh'], feedback: 'Gửi xe 10k, thuê ghế kèm nước dừa. Sóng êm, nước trong.', memory: 'Ngủ quên trên ghế, tỉnh dậy thấy trời đã tím.', p: [['#BFE3EA', '#F8D9E2', '🏖️']] }
       ]
     },
     {
-      name: 'Sáng chủ nhật ở phố cổ', note: 'Một buổi sáng đi bộ chậm rãi, ăn sáng hai lần.', region: { province: 'Hà Nội', ...VN }, route: true, speed: 1.2, stops: [
+      name: 'Sáng chủ nhật ở phố cổ', trip: 'Sáng chủ nhật ở phố cổ', note: 'Một buổi sáng đi bộ chậm rãi, ăn sáng hai lần.', region: { province: 'Hà Nội', ...VN }, route: true, speed: 1.2, stops: [
         { name: 'Hồ Hoàn Kiếm', cat: 'nature', lat: 21.0287, lng: 105.8524, t: ['2026-10-19', 6, 30], rating: 5, price: 0, mood: 3, tags: ['View đẹp'], feedback: 'Sáng sớm nhiều người tập thể dục, không khí trong lành.', memory: 'Cầu Thê Húc đỏ rực trong nắng sớm.', p: [['#F4B3C5', '#F3E8DA', '🌅']] },
         { name: 'Cà phê trứng phố cổ', cat: 'cafe', lat: 21.0331, lng: 105.8541, t: ['2026-10-19', 7, 45], rating: 5, price: 1, mood: 5, tags: ['Đồ ăn ngon', 'Đáng quay lại', 'Khó tìm'], feedback: 'Lối vào nằm sâu trong hẻm, lên tầng 3 có ban công nhìn ra hồ. Trứng đánh bông mịn, không tanh.', memory: '', p: [['#E9D3C0', '#FFF3E6', '☕']] },
         { name: 'Bún chả Hàng Mành', cat: 'food', lat: 21.0335, lng: 105.8490, t: ['2026-10-19', 11, 30], rating: 4, price: 1, mood: 4, tags: ['Đồ ăn ngon', 'Đông đúc'], feedback: 'Chả nướng thơm than hoa, nước chấm vừa miệng. Giờ trưa rất đông.', memory: '', p: [] }
       ]
     },
     {
-      name: 'Đà Lạt ngày 1 · Phố & hồ', note: 'Ngày đầu tiên lạnh hơn tưởng tượng, nhưng mọi thứ đều dễ thương.', region: { province: 'Lâm Đồng', ...VN }, route: true, speed: 5.5, stops: [
+      name: 'Đà Lạt ngày 1 · Phố & hồ', trip: 'Cung Đà Lạt cuối tuần', note: 'Hai ngày lạnh hơn tưởng tượng, chạy xe loanh quanh và ăn rất nhiều.', region: { province: 'Lâm Đồng', ...VN }, route: true, speed: 5.5, stops: [
         { name: 'Chợ Đà Lạt', cat: 'shop', lat: 11.9429, lng: 108.4372, t: ['2026-11-07', 8, 40], rating: 4, price: 1, mood: 4, tags: ['Đông đúc', 'Giá hợp lý'], feedback: 'Sáng sớm chợ còn mát, dâu tây và mứt rất nhiều lựa chọn. Nhớ trả giá nhẹ nhàng.', memory: 'Mua túi dâu đầu tiên, ăn luôn ngoài hiên chợ.', p: [['#F7C9D6', '#F3E8DA', '🍓']] },
         { name: 'Quán bánh căn Nhà Chung', cat: 'food', lat: 11.9381, lng: 108.4369, t: ['2026-11-07', 9, 30], rating: 5, price: 1, mood: 5, tags: ['Đồ ăn ngon', 'Đáng quay lại', 'Giá hợp lý'], feedback: 'Bánh căn trứng cút giòn, nước chấm xíu mại đậm vị. Phải xếp hàng khoảng 15 phút.', memory: 'Ngồi ghế nhựa thấp, gió lạnh mà bánh nóng hổi.', p: [['#F4B3C5', '#FFF3E6', '🥞'], ['#EED6C4', '#FBE3EA', '🍳']] },
         { name: 'Hồ Xuân Hương', cat: 'nature', lat: 11.9404, lng: 108.4446, t: ['2026-11-07', 10, 45], rating: 5, price: 0, mood: 3, tags: ['View đẹp', 'Chụp ảnh đẹp'], feedback: 'Đi bộ một vòng hồ mất chừng 1 tiếng, có xe đạp đôi cho thuê.', memory: 'Sương tan dần trên mặt hồ, cả hai im lặng nhìn rất lâu.', p: [['#CFE3E8', '#F8D9E2', '🦢'], ['#F3E8DA', '#D9E8EC', '🌫️'], ['#F8D9E2', '#E4D2BE', '🚲']] },
@@ -42,7 +42,7 @@ const Demo = (() => {
       ]
     },
     {
-      name: 'Đà Lạt ngày 2 · Ga & thung lũng', note: 'Đi xe máy loanh quanh, chiều về trời đổ mưa nhẹ.', region: { province: 'Lâm Đồng', ...VN }, route: true, speed: 7, stops: [
+      name: 'Đà Lạt ngày 2 · Ga & thung lũng', trip: 'Cung Đà Lạt cuối tuần', note: '', region: { province: 'Lâm Đồng', ...VN }, route: true, speed: 7, stops: [
         { name: 'Nhà thờ Con Gà', cat: 'sight', lat: 11.9363, lng: 108.4380, t: ['2026-11-08', 8, 15], rating: 4, price: 0, mood: 3, tags: ['Chụp ảnh đẹp'], feedback: 'Kiến trúc Pháp màu hồng nhạt, vào buổi sáng ít người.', memory: '', p: [['#F8D9E2', '#FFF3E6', '⛪']] },
         { name: 'Ga Đà Lạt', cat: 'sight', lat: 11.9416, lng: 108.4555, t: ['2026-11-08', 9, 40], rating: 5, price: 1, mood: 5, tags: ['Chụp ảnh đẹp', 'View đẹp', 'Đáng quay lại'], feedback: 'Vé tham quan rẻ, có tàu chạy tuyến Trại Mát. Toa tàu gỗ cũ rất đẹp để chụp.', memory: 'Tiếng còi tàu làm cả hai giật mình rồi bật cười.', p: [['#E4D2BE', '#F4B3C5', '🚂'], ['#F3E8DA', '#F8D9E2', '🎫']] },
         { name: 'Quán bánh căn Nhà Chung', cat: 'food', lat: 11.9381, lng: 108.4369, t: ['2026-11-08', 11, 30], rating: 5, price: 1, mood: 5, tags: ['Đồ ăn ngon', 'Đáng quay lại'], feedback: 'Quay lại lần hai, lần này gọi thêm phần xíu mại riêng.', memory: '', p: [] },
@@ -50,33 +50,6 @@ const Demo = (() => {
       ]
     }
   ];
-
-  function hav(a, b) {
-    const R = 6371000, toR = Math.PI / 180;
-    const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
-    const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(s));
-  }
-
-  // Nội suy giữa các điểm dừng, thêm độ cong nhẹ cho giống đường phố.
-  function buildRoute(stops, speed) {
-    const pts = [];
-    for (let i = 0; i < stops.length - 1; i++) {
-      const a = stops[i], b = stops[i + 1];
-      const d = hav([a.lat, a.lng], [b.lat, b.lng]);
-      const n = Math.max(4, Math.round(d / 35));
-      const t0 = a.time + 15 * 60000;
-      const travel = Math.min(d / speed * 1000, b.time - t0 - 5 * 60000);
-      const bend = (i % 2 ? 1 : -1) * Math.min(0.0012, d / 900000);
-      for (let k = 0; k <= n; k++) {
-        const f = k / n;
-        const curve = Math.sin(f * Math.PI) * bend;
-        const wob = Math.sin(f * Math.PI * 6) * 0.00006;
-        pts.push([+(a.lat + (b.lat - a.lat) * f + curve + wob).toFixed(6), +(a.lng + (b.lng - a.lng) * f - curve * 0.6).toFixed(6), Math.round(t0 + travel * f), 0]);
-      }
-    }
-    return pts;
-  }
 
   function drawPhoto(c1, c2, emoji, w, h) {
     const cv = document.createElement('canvas');
@@ -103,22 +76,14 @@ const Demo = (() => {
   }
 
   async function build(uid) {
-    const journeys = [], checkins = [], photos = [];
+    const journeys = [], checkins = [], photos = [], tripMap = new Map();
     for (const T of TRIPS) {
       const stops = T.stops.map(p => ({ ...p, time: at(...p.t) }));
-      let jid = null;
-      if (T.route) {
-        jid = uid();
-        const points = buildRoute(stops, T.speed);
-        let dist = 0;
-        for (let i = 1; i < points.length; i++) dist += hav(points[i - 1], points[i]);
-        const startedAt = stops[0].time - 20 * 60000;
-        const endedAt = stops[stops.length - 1].time + 50 * 60000;
-        const moving = points.length ? points[points.length - 1][2] - points[0][2] : 0;
-        journeys.push({
-          id: jid, name: T.name, note: T.note, startedAt, endedAt, points, distance: Math.round(dist),
-          activeMs: Math.round(moving * 0.35), resumedAt: null, status: 'done', seg: 0, demo: true, ...T.region
-        });
+      let trip = null;
+      if (T.trip) {
+        trip = tripMap.get(T.trip);
+        if (!trip) { trip = { id: uid(), name: T.trip, note: T.note || '', startedAt: stops[0].time - 3600000, endedAt: 0, createdAt: stops[0].time, updatedAt: stops[0].time, demo: true }; tripMap.set(T.trip, trip); }
+        trip.endedAt = stops[stops.length - 1].time + 3600000;
       }
       for (const p of stops) {
         const cid = uid();
@@ -130,13 +95,13 @@ const Demo = (() => {
           photoIds.push(pid);
         }
         checkins.push({
-          id: cid, journeyId: jid, lat: p.lat, lng: p.lng, name: p.name, address: '', cat: p.cat,
+          id: cid, journeyId: null, tripId: trip ? trip.id : null, lat: p.lat, lng: p.lng, name: p.name, address: '', cat: p.cat,
           rating: p.rating, price: p.price, mood: p.mood, tags: p.tags, feedback: p.feedback, memory: p.memory,
           photoIds, visitedAt: p.time, createdAt: p.time, updatedAt: p.time, demo: true, ...T.region, regionSrc: 'manual'
         });
       }
     }
-    return { journeys, checkins, photos };
+    return { journeys, checkins, photos, trips: [...tripMap.values()] };
   }
 
   return { build };

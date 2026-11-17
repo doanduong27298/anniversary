@@ -1,5 +1,5 @@
 /* Service worker: cho app mở được khi mất mạng và lưu tạm ô bản đồ đã xem. */
-const VERSION = 'oj-v3';
+const VERSION = 'oj-v4';
 const SHELL = [
   './', 'index.html', 'css/style.css',
   'js/icons.js', 'js/vn-shape.js', 'js/geo.js', 'js/db.js', 'js/sync.js', 'js/demo.js', 'js/app.js',
