@@ -20,6 +20,23 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Màn hình khoá -->
+  <div class="lock" id="lock" role="dialog" aria-label="Nhập mã để vào">
+    <div class="lk-in">
+      <img class="lk-logo" src="icons/icon.svg" alt="">
+      <p class="lk-title">Our Journey</p>
+      <p class="lk-msg">Nhập mã để vào</p>
+      <div class="lk-dots"><i></i><i></i><i></i><i></i></div>
+      <div class="lk-pad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" class="lk-del" aria-label="Xoá">⌫</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/lock.js"></script>
+
   <div id="app">
     <div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
 
@@ -83,18 +100,19 @@
     <section class="view page" id="view-diary" data-view="diary">
       <header class="page-head">
         <div class="head-row">
-          <h1>Kỉ niệm</h1>
+          <h1>Tụi mình</h1>
           <button type="button" class="icon-btn" data-act="settings" aria-label="Cài đặt" title="Cài đặt"><span data-icon="gear"></span></button>
+        </div>
+        <div class="seg us-seg" role="tablist" aria-label="Kiểu xem">
+          <button type="button" class="is-on" data-diarymode="us">Hành trình</button>
+          <button type="button" data-diarymode="cal">Lịch</button>
+          <button type="button" data-diarymode="album">Ảnh</button>
         </div>
       </header>
       <div class="page-body">
-        <button type="button" class="wrap-banner" id="wrapBanner" data-act="wrapped" hidden></button>
-        <div class="seg" role="tablist" aria-label="Kiểu xem">
-          <button type="button" class="is-on" data-diarymode="cal">Lịch</button>
-          <button type="button" data-diarymode="album">Ảnh</button>
-        </div>
-        <div class="card cal" id="calBox"></div>
-        <div class="diary-list" id="diaryList"></div>
+        <div class="diary-list" id="usBox"></div>
+        <div class="card cal" id="calBox" hidden></div>
+        <div class="diary-list" id="diaryList" hidden></div>
         <div class="diary-list" id="albumBox" hidden>
           <div class="seg" role="tablist" aria-label="Xếp ảnh theo">
             <button type="button" class="is-on" data-albummode="month">Theo tháng</button>
@@ -109,7 +127,7 @@
     <nav class="glass tabbar" aria-label="Điều hướng">
       <button type="button" class="tab is-on" data-go="map"><span data-icon="map"></span><b>Bản đồ</b></button>
       <button type="button" class="tab" data-go="trips"><span data-icon="route"></span><b>Cung đường</b></button>
-      <button type="button" class="tab" data-go="diary"><span data-icon="heart"></span><b>Kỉ niệm</b></button>
+      <button type="button" class="tab" data-go="diary"><span data-icon="heart"></span><b>Tụi mình</b></button>
     </nav>
     <button type="button" class="fab-float" id="btnAdd" aria-label="Check-in: ghim ngay chỗ đang đứng"><span data-icon="pinplus"></span><b>Check-in</b></button>
 
@@ -152,11 +170,19 @@
         <div class="story-nav" id="storyNav"><button type="button" id="storyPrev" aria-label="Thẻ trước"></button><button type="button" id="storyNext" aria-label="Thẻ sau"></button></div>
       </div>
       <button type="button" class="story-close" id="storyClose" aria-label="Đóng"><span data-icon="x"></span></button>
-      <div class="story-acts"><button type="button" class="btn primary" id="storyShare"><span data-icon="upload"></span>Lưu / chia sẻ ảnh</button></div>
+      <div class="story-acts">
+        <button type="button" class="btn line" id="storyShare"><span data-icon="image"></span>Lưu ảnh</button>
+        <button type="button" class="btn primary" id="storyVideo"><span data-icon="play"></span>Quay video</button>
+      </div>
+      <div class="story-rec" id="storyRec"><i></i>Đang quay video · <span id="storyRecTime">0 giây</span></div>
       <div class="story-save" id="storySave" hidden>
-        <img alt="Ảnh tổng kết">
-        <p>Nhấn giữ ảnh rồi chọn “Lưu vào Ảnh” để chia sẻ.</p>
-        <button type="button" class="btn line" id="storySaveClose">Xong</button>
+        <div class="ss-media"></div>
+        <p></p>
+        <div class="ss-acts">
+          <button type="button" class="btn primary" id="storySaveShare"><span data-icon="upload"></span>Chia sẻ</button>
+          <a class="btn line" id="storySaveDl" href="#" download><span data-icon="download"></span>Tải về</a>
+          <button type="button" class="btn line" id="storySaveClose">Xong</button>
+        </div>
       </div>
     </div>
 

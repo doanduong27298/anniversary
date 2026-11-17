@@ -1,7 +1,7 @@
 /* Service worker: cho app mở được khi mất mạng và lưu tạm ô bản đồ đã xem. */
-const VERSION = 'oj-v5';
+const VERSION = 'oj-v6';
 const SHELL = [
-  './', 'index.html', 'css/style.css',
+  './', 'index.html', 'css/style.css', 'js/lock.js',
   'js/icons.js', 'js/vn-shape.js', 'js/geo.js', 'js/db.js', 'js/sync.js', 'js/story.js', 'js/demo.js', 'js/app.js',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'manifest.webmanifest'

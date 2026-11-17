@@ -132,7 +132,7 @@ const Story = (() => {
     const ox = x + (w - (maxX - minX) * s) / 2, oy = y + (h - (maxY - minY) * s) / 2;
     return p => [ox + (p[1] * k - minX) * s, oy + (-p[0] - minY) * s];
   }
-  function drawRoute(ctx, lines, P, color, prog, width = 12) {
+  function drawRoute(ctx, lines, P, color, prog, width = 12, veh = null) {
     const all = lines.map(l => l.map(P));
     const len = l => l.reduce((a, p, i) => (i ? a + Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0), 0);
     const total = all.reduce((a, l) => a + len(l), 0);
@@ -152,10 +152,26 @@ const Story = (() => {
       }
       if (left <= 0 && prog < 1) {
         const h = pts[pts.length - 1];
-        ctx.beginPath(); ctx.arc(h[0], h[1], width * 1.4, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff'; ctx.fill();
-        ctx.beginPath(); ctx.arc(h[0], h[1], width * 0.9, 0, Math.PI * 2);
-        ctx.fillStyle = color; ctx.fill();
+        if (veh) {
+          const p0 = pts[Math.max(0, pts.length - 2)];
+          ctx.save();
+          ctx.shadowColor = 'rgba(80,30,50,.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+          ctx.beginPath(); ctx.arc(h[0], h[1], width * 3, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.restore();
+          ctx.beginPath(); ctx.arc(h[0], h[1], width * 3, 0, Math.PI * 2); ctx.lineWidth = 5; ctx.strokeStyle = color; ctx.stroke();
+          ctx.save();
+          ctx.translate(h[0], h[1]);
+          if (h[0] > p0[0]) ctx.scale(-1, 1); // biểu tượng xe quay đầu theo hướng đi
+          ctx.font = `${Math.round(width * 3.4)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(veh, 0, width * 0.2);
+          ctx.restore();
+        } else {
+          ctx.beginPath(); ctx.arc(h[0], h[1], width * 1.4, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.beginPath(); ctx.arc(h[0], h[1], width * 0.9, 0, Math.PI * 2);
+          ctx.fillStyle = color; ctx.fill();
+        }
       }
     }
   }
@@ -173,22 +189,33 @@ const Story = (() => {
       bg(ctx, 'pink', now);
       const a = ease(t / 0.6);
       ctx.globalAlpha = a;
-      ctx.font = `700 190px ${SC}`;
-      const ts = Math.min(190, 190 * 900 / Math.max(1, ctx.measureText('Our Journey').width));
-      txt(ctx, 'Our Journey', W / 2, 560 - 40 * (1 - a), { font: SC, w: 700, size: ts, color: C.deep, align: 'center' });
-      txt(ctx, d.who, W / 2, 680, { w: 600, size: 46, color: C.ink, align: 'center', maxW: 900 });
-      txt(ctx, d.period, W / 2, 750, { w: 500, size: 36, color: C.muted, align: 'center' });
+      ctx.font = `700 170px ${SC}`;
+      const ts = Math.min(170, 170 * 880 / Math.max(1, ctx.measureText('Our Journey').width));
+      txt(ctx, 'Our Journey', W / 2, 400 - 40 * (1 - a), { font: SC, w: 700, size: ts, color: C.deep, align: 'center' });
+      txt(ctx, d.who, W / 2, 510, { w: 700, size: 52, color: C.ink, align: 'center', maxW: 920 });
+      const beat = calm ? 1 : 1 + Math.max(0, Math.sin(now / 280)) * 0.06;
+      ctx.save();
+      ctx.translate(W / 2, 770);
+      ctx.scale(beat * (0.6 + 0.4 * a), beat * (0.6 + 0.4 * a));
+      ctx.shadowColor = 'rgba(194,78,120,.45)'; ctx.shadowBlur = 50;
+      ctx.fillStyle = C.pink;
+      heart(ctx, 0, -200, 400);
+      ctx.fill();
+      ctx.restore();
+      txt(ctx, nf(Math.round(d.since * ease(t / 1.3))), W / 2, 790, { w: 800, size: 140, color: '#fff', align: 'center' });
+      txt(ctx, 'ngày', W / 2, 862, { w: 700, size: 44, color: '#fff', align: 'center' });
+      txt(ctx, d.two ? 'cùng nhau trên những cung đường' : 'trên những cung đường', W / 2, 1060, { w: 600, size: 44, color: C.ink, align: 'center', maxW: 920 });
+      txt(ctx, d.period, W / 2, 1122, { w: 500, size: 34, color: C.muted, align: 'center' });
       ctx.globalAlpha = 1;
-      const items = d.stats;
-      items.forEach((s, i) => {
-        const k = ease((t - 0.25 - i * 0.12) / 0.5);
+      d.stats.forEach((st2, i) => {
+        const k = ease((t - 0.5 - i * 0.12) / 0.5);
         if (k <= 0) return;
         const col = i % 2, row = Math.floor(i / 2);
-        const x = 110 + col * 440, y = 900 + row * 330 + 40 * (1 - k);
+        const x = 110 + col * 440, y = 1190 + row * 250 + 40 * (1 - k);
         ctx.globalAlpha = k;
-        glass(ctx, x, y, 420, 290, 52);
-        txt(ctx, nf(Math.round(s.v * ease(t / 1.1))), x + 210, y + 160, { w: 800, size: 112, color: C.deep, align: 'center' });
-        txt(ctx, s.l, x + 210, y + 225, { w: 500, size: 36, color: C.muted, align: 'center' });
+        glass(ctx, x, y, 420, 220, 48);
+        txt(ctx, nf(Math.round(st2.v * ease(t / 1.4))), x + 210, y + 120, { w: 800, size: 92, color: C.deep, align: 'center' });
+        txt(ctx, st2.l, x + 210, y + 178, { w: 500, size: 34, color: C.muted, align: 'center' });
         ctx.globalAlpha = 1;
       });
       brand(ctx);
@@ -275,9 +302,9 @@ const Story = (() => {
       glass(ctx, 70, y0 + 120, 940, 760, 60);
       if (d.lines.length && d.lines.flat().length > 1) {
         const P = projector(d.lines.flat(), 70, y0 + 120, 940, 760, 80);
-        drawRoute(ctx, d.lines, P, d.color, ease(t / 1.4), 14);
+        drawRoute(ctx, d.lines, P, d.color, ease(t / 2.2), 14, d.veh);
         d.stops.forEach((p, i) => {
-          const k = ease((t * 1.4 - i * 0.08) / 0.3);
+          const k = ease((t / 2.2 * d.stops.length - i) / 0.6);
           if (k <= 0) return;
           const [x, y] = P(p);
           ctx.beginPath(); ctx.arc(x, y, 13 * k, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
@@ -313,6 +340,109 @@ const Story = (() => {
         });
         ctx.globalAlpha = 1;
       }
+      brand(ctx);
+    },
+
+    first(ctx, d, t, now) {
+      bg(ctx, 'beige', now);
+      txt(ctx, 'KỈ NIỆM ĐẦU TIÊN', 90, 230, { w: 700, size: 36, color: C.deep, ls: 4 });
+      txt(ctx, d.two ? 'Nơi tụi mình bắt đầu' : 'Nơi mọi thứ bắt đầu', 90, 320, { w: 800, size: 70, color: C.ink, maxW: 900 });
+      const k = ease(t / 0.9);
+      // ảnh kiểu polaroid nghiêng nhẹ, rơi xuống
+      ctx.save();
+      ctx.translate(W / 2, 880 - 80 * (1 - k));
+      ctx.rotate(-0.05 + 0.03 * (1 - k));
+      ctx.globalAlpha = k;
+      ctx.shadowColor = 'rgba(120,50,70,.35)'; ctx.shadowBlur = 60; ctx.shadowOffsetY = 26;
+      rr(ctx, -380, -400, 760, 880, 26); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.shadowColor = 'transparent';
+      if (d.img) photo(ctx, d.img, -340, -360, 680, 640, 14);
+      else {
+        rr(ctx, -340, -360, 680, 640, 14);
+        const g = ctx.createLinearGradient(-340, -360, 340, 280); g.addColorStop(0, '#FBDCE6'); g.addColorStop(1, '#F5EADD');
+        ctx.fillStyle = g; ctx.fill();
+        ctx.fillStyle = C.pink; heart(ctx, 0, -150, 220); ctx.fill();
+      }
+      txt(ctx, d.name, 0, 350, { font: SC, w: 700, size: 64, color: C.ink, align: 'center', maxW: 660 });
+      ctx.restore();
+      ctx.globalAlpha = ease((t - 0.6) / 0.6);
+      txt(ctx, `${d.date}${d.where ? ' · ' + d.where : ''}`, W / 2, 1430, { w: 600, size: 38, color: C.muted, align: 'center', maxW: 920 });
+      txt(ctx, `${new Intl.NumberFormat('vi-VN').format(d.ago)} ngày trước`, W / 2, 1520, { w: 800, size: 64, color: C.deep, align: 'center' });
+      if (d.memo) wrap(ctx, `“${d.memo}”`, W / 2, 1620, 880, 58, { w: 700, size: 48, font: SC, color: C.ink, align: 'center' }, 2);
+      ctx.globalAlpha = 1;
+      brand(ctx);
+    },
+
+    journey(ctx, d, t, now) {
+      bg(ctx, 'pink', now);
+      txt(ctx, d.two ? 'Những cung đường tụi mình đã đi' : 'Những cung đường đã đi', 90, 210, { w: 800, size: 56, color: C.ink, maxW: 920 });
+      const n = d.trips.length;
+      const A = Math.min(6.2, 1.4 + n * 1.3);
+      const q = clamp((t - 0.3) / A);
+      const cur = Math.min(n - 1, Math.floor(q * n));
+      const box = { x: 60, y: 260, w: 960, h: 1280 };
+      glass(ctx, box.x, box.y, box.w, box.h, 60, 0.45);
+      const P = projector(d.shape.flat().concat([[16.5, 112.4], [9, 114.3]]), box.x, box.y, box.w, box.h, 60);
+      ctx.save();
+      rr(ctx, box.x, box.y, box.w, box.h, 60); ctx.clip();
+      ctx.beginPath();
+      d.shape.forEach(poly => { poly.forEach((p, i) => { const [x, y] = P(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); });
+      ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(236,127,162,.7)'; ctx.lineWidth = 4; ctx.stroke();
+      let kmNow = 0;
+      d.trips.forEach((tr, i) => {
+        const prog = clamp((q - i / n) * n);
+        if (prog <= 0) return;
+        kmNow += tr.km * prog;
+        drawRoute(ctx, tr.lines, P, tr.color, prog, 11, prog < 1 ? tr.veh : null);
+        const shownStops = Math.ceil(tr.stops.length * prog);
+        tr.stops.slice(0, shownStops).forEach(p => {
+          const [x, y] = P(p);
+          ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.lineWidth = 5; ctx.strokeStyle = tr.color; ctx.stroke();
+        });
+      });
+      ctx.restore();
+      const tr = d.trips[cur];
+      if (tr) {
+        rr(ctx, 100, 300, 880, 96, 48); ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(150, 348, 16, 0, Math.PI * 2); ctx.fillStyle = tr.color; ctx.fill();
+        txt(ctx, `${q >= 1 ? n : cur + 1}/${n} · ${q >= 1 ? 'Tất cả các cung' : tr.name}`, 185, 362, { w: 700, size: 40, color: C.ink, maxW: 760 });
+      }
+      const kmShown = q >= 1 ? d.km : kmNow;
+      const big = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: kmShown < 100 ? 1 : 0, minimumFractionDigits: kmShown < 100 ? 1 : 0 }).format(kmShown);
+      const wv = txt(ctx, big, 90, 1670, { w: 800, size: 140, color: C.deep, ls: -4 });
+      txt(ctx, 'km', 110 + wv, 1670, { w: 700, size: 56, color: C.muted });
+      const ratio = d.km / S_LENGTH;
+      txt(ctx, ratio >= 1 ? `≈ ${nf(ratio, 1)} lần chiều dài chữ S` : `≈ ${nf(Math.max(1, Math.round(ratio * 100)))}% chiều dài chữ S (1.650 km)`, 95, 1730, { w: 600, size: 34, color: C.ink, maxW: 900 });
+      brand(ctx);
+    },
+
+    trips(ctx, d, t, now) {
+      bg(ctx, 'beige', now);
+      txt(ctx, d.two ? 'Những chuyến đi' : 'Những chuyến đi', 90, 240, { w: 600, size: 52, color: C.muted });
+      txt(ctx, d.two ? 'của tụi mình' : 'của bạn', 90, 320, { w: 800, size: 76, color: C.ink });
+      const items = d.items.slice(0, 6);
+      const rowH = Math.min(210, Math.floor(1260 / Math.max(1, items.length)) - 20);
+      items.forEach((it, i) => {
+        const k = ease((t - 0.2 - i * 0.16) / 0.5);
+        if (k <= 0) return;
+        const y = 400 + i * (rowH + 20);
+        ctx.save();
+        ctx.translate(120 * (1 - k), 0);
+        ctx.globalAlpha = k;
+        glass(ctx, 70, y, 940, rowH, 44);
+        rr(ctx, 70, y, 18, rowH, 9); ctx.fillStyle = it.color; ctx.fill();
+        ctx.font = `${Math.round(rowH * 0.36)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(it.veh, 160, y + rowH / 2);
+        txt(ctx, it.name, 230, y + rowH * 0.42, { w: 800, size: 44, color: C.ink, maxW: 520 });
+        txt(ctx, it.dates, 230, y + rowH * 0.42 + 54, { w: 500, size: 30, color: C.muted, maxW: 520 });
+        txt(ctx, it.km, 975, y + rowH * 0.42, { w: 800, size: 52, color: it.color, align: 'right' });
+        txt(ctx, `km · ${it.stops} điểm`, 975, y + rowH * 0.42 + 54, { w: 500, size: 30, color: C.muted, align: 'right' });
+        ctx.restore();
+      });
+      if (d.items.length > items.length) txt(ctx, `+ ${d.items.length - items.length} chuyến đi nữa`, W / 2, 400 + items.length * (rowH + 20) + 50, { w: 600, size: 36, color: C.muted, align: 'center' });
       brand(ctx);
     },
 
@@ -375,9 +505,14 @@ const Story = (() => {
   function bars() {
     $('#storyBars').innerHTML = st.cards.map((_, i) => `<i><b style="width:${i < st.i ? 100 : 0}%"></b></i>`).join('');
   }
+  const durOf = c => c.dur || DUR;
   function go(i) {
     if (i < 0) i = 0;
-    if (i >= st.cards.length) { if (st.cards.length > 1) return close(); i = st.cards.length - 1; }
+    if (i >= st.cards.length) {
+      if (st.recording) { finishRec(); return; }
+      if (st.cards.length > 1) return close();
+      i = st.cards.length - 1;
+    }
     st.i = i;
     st.start = performance.now();
     st.blob = null;
@@ -394,8 +529,10 @@ const Story = (() => {
     ctx.clearRect(0, 0, W, H);
     CARDS[card.kind](ctx, card.data, t, calm ? 0 : now);
     const bar = $('#storyBars').children[st.i];
-    if (bar && st.cards.length > 1) bar.firstChild.style.width = Math.min(100, (el / DUR) * 100) + '%';
-    if (st.cards.length > 1 && !st.paused && el > DUR) go(st.i + 1);
+    const D = durOf(card);
+    if (bar && st.cards.length > 1) bar.firstChild.style.width = Math.min(100, (el / D) * 100) + '%';
+    if (st.recording) $('#storyRecTime').textContent = Math.floor((now - st.recording.at) / 1000) + ' giây';
+    if ((st.cards.length > 1 || st.recording) && !st.paused && el > D) go(st.i + 1);
     st.raf = requestAnimationFrame(frame);
   }
   /** Vẽ sẵn ảnh của thẻ hiện tại (đã hiện đầy đủ) để bấm Chia sẻ là gửi được ngay. */
@@ -422,12 +559,75 @@ const Story = (() => {
       try { await navigator.share({ files: [file], title: st.title }); return; }
       catch (e) { if (e && e.name === 'AbortError') return; }
     }
-    // Không chia sẻ trực tiếp được: hiện ảnh để nhấn giữ và lưu
-    const url = URL.createObjectURL(blob);
+    showSave(blob, false); // không chia sẻ trực tiếp được: hiện ảnh để nhấn giữ và lưu
+  }
+
+  /** Khung xem lại ảnh/video vừa tạo, có nút chia sẻ (cần một lần chạm mới của người dùng). */
+  function showSave(blob, isVideo) {
     const ov = $('#storySave');
-    ov.querySelector('img').src = url;
+    const box = ov.querySelector('.ss-media');
+    box.innerHTML = '';
+    const url = URL.createObjectURL(blob);
+    const ext = isVideo ? (/mp4/.test(blob.type) ? 'mp4' : 'webm') : 'png';
+    const file = new File([blob], `our-journey.${ext}`, { type: blob.type || (isVideo ? 'video/mp4' : 'image/png') });
+    if (isVideo) {
+      const v = document.createElement('video');
+      Object.assign(v, { src: url, controls: true, playsInline: true, muted: true, autoplay: true, loop: true });
+      box.appendChild(v);
+    } else {
+      const im = new Image();
+      im.src = url;
+      im.alt = 'Ảnh tổng kết';
+      box.appendChild(im);
+    }
+    const can = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    $('#storySaveShare').hidden = !can;
+    $('#storySaveShare').onclick = async () => { try { await navigator.share({ files: [file], title: st ? st.title : 'Our Journey' }); } catch { /* người dùng huỷ */ } };
+    const dl = $('#storySaveDl');
+    dl.href = url;
+    dl.download = file.name;
+    dl.hidden = can && !isVideo;
+    ov.querySelector('p').textContent = isVideo
+      ? (can ? 'Video đã xong. Bấm Chia sẻ rồi chọn “Lưu video”, hoặc gửi thẳng qua Messenger, Zalo…' : 'Video đã xong. Bấm Tải về để lưu.')
+      : 'Nhấn giữ ảnh rồi chọn “Lưu vào Ảnh” để chia sẻ.';
     ov.hidden = false;
+    if (st) st.paused = true;
+  }
+
+  /** Quay cả story thành video (chạy lại từ đầu tới cuối). */
+  function recordVideo() {
+    if (!st || st.recording) return;
+    const cv = $('#storyCanvas');
+    if (!cv.captureStream || !window.MediaRecorder) {
+      const ov = $('#storySave');
+      ov.querySelector('.ss-media').innerHTML = '';
+      ov.querySelector('p').textContent = 'Trình duyệt này chưa quay video được. Hãy dùng Lưu ảnh cho từng trang nhé.';
+      $('#storySaveShare').hidden = true; $('#storySaveDl').hidden = true;
+      ov.hidden = false; st.paused = true;
+      return;
+    }
+    const type = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(x => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(x)) || '';
+    let rec;
+    try { rec = new MediaRecorder(cv.captureStream(30), type ? { mimeType: type, videoBitsPerSecond: 8000000 } : undefined); }
+    catch { rec = new MediaRecorder(cv.captureStream(30)); }
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => { const blob = new Blob(chunks, { type: rec.mimeType || type || 'video/mp4' }); if (st) showSave(blob, true); };
+    st.recording = { rec, at: performance.now() };
+    st.paused = false;
+    $('#story').classList.add('rec');
+    go(0);
+    rec.start(1000);
+  }
+  function finishRec() {
+    const r = st.recording;
+    st.recording = null;
+    $('#story').classList.remove('rec');
+    st.i = st.cards.length - 1;
+    st.start = performance.now();
+    st.pausedFor = 0;
     st.paused = true;
+    try { r.rec.stop(); } catch { /* bỏ qua */ }
   }
   async function open(cards, title = 'Our Journey') {
     if (!cards.length) return;
@@ -452,20 +652,23 @@ const Story = (() => {
   function close() {
     if (!st) return;
     cancelAnimationFrame(st.raf);
+    if (st.recording) { try { st.recording.rec.stop(); } catch { /* bỏ qua */ } }
     st = null;
+    $('#story').classList.remove('rec');
     $('#story').hidden = true;
     $('#storySave').hidden = true;
   }
   function bind() {
     $('#storyClose').onclick = close;
     $('#storyShare').onclick = share;
+    $('#storyVideo').onclick = recordVideo;
     let downAt = 0, pauseAt = 0;
     const tap = () => performance.now() - downAt < 350; // giữ lâu là tạm dừng, không chuyển thẻ
-    $('#storyPrev').onclick = () => st && tap() && go(st.i - 1);
-    $('#storyNext').onclick = () => st && tap() && go(st.i + 1);
+    $('#storyPrev').onclick = () => st && !st.recording && tap() && go(st.i - 1);
+    $('#storyNext').onclick = () => st && !st.recording && tap() && go(st.i + 1);
     $('#storySaveClose').onclick = () => { $('#storySave').hidden = true; if (st) st.paused = false; };
     const stage = $('#storyStage');
-    stage.addEventListener('pointerdown', () => { if (!st) return; downAt = performance.now(); pauseAt = downAt; st.paused = true; });
+    stage.addEventListener('pointerdown', () => { if (!st || st.recording) return; downAt = performance.now(); pauseAt = downAt; st.paused = true; });
     const up = () => { if (!st || !st.paused || !$('#storySave').hidden) return; st.paused = false; st.pausedFor = (st.pausedFor || 0) + (performance.now() - pauseAt); };
     stage.addEventListener('pointerup', up);
     stage.addEventListener('pointercancel', up);
