@@ -83,14 +83,16 @@
     <section class="view page" id="view-diary" data-view="diary">
       <header class="page-head">
         <div class="head-row">
-          <h1>Nhật ký</h1>
-          <div class="seg" role="tablist" aria-label="Kiểu xem">
-            <button type="button" class="is-on" data-diarymode="cal">Lịch</button>
-            <button type="button" data-diarymode="album">Ảnh</button>
-          </div>
+          <h1>Kỉ niệm</h1>
+          <button type="button" class="icon-btn" data-act="settings" aria-label="Cài đặt" title="Cài đặt"><span data-icon="gear"></span></button>
         </div>
       </header>
       <div class="page-body">
+        <button type="button" class="wrap-banner" id="wrapBanner" data-act="wrapped" hidden></button>
+        <div class="seg" role="tablist" aria-label="Kiểu xem">
+          <button type="button" class="is-on" data-diarymode="cal">Lịch</button>
+          <button type="button" data-diarymode="album">Ảnh</button>
+        </div>
         <div class="card cal" id="calBox"></div>
         <div class="diary-list" id="diaryList"></div>
         <div class="diary-list" id="albumBox" hidden>
@@ -103,22 +105,13 @@
       </div>
     </section>
 
-    <!-- ============ TỔNG KẾT: đã đi được bao nhiêu, dùng chung ============ -->
-    <section class="view page" id="view-me" data-view="me">
-      <header class="page-head">
-        <div class="head-row"><h1>Tổng kết</h1></div>
-      </header>
-      <div class="page-body" id="meBody"></div>
-    </section>
-
     <!-- ============ THANH TAB ============ -->
     <nav class="glass tabbar" aria-label="Điều hướng">
       <button type="button" class="tab is-on" data-go="map"><span data-icon="map"></span><b>Bản đồ</b></button>
       <button type="button" class="tab" data-go="trips"><span data-icon="route"></span><b>Cung đường</b></button>
-      <button type="button" class="tab tab-main" id="btnAdd" aria-label="Check-in ngay tại đây"><span class="fab"><span data-icon="pinplus"></span></span><b>Check-in</b></button>
-      <button type="button" class="tab" data-go="diary"><span data-icon="calendar"></span><b>Nhật ký</b></button>
-      <button type="button" class="tab" data-go="me"><span data-icon="award"></span><b>Tổng kết</b></button>
+      <button type="button" class="tab" data-go="diary"><span data-icon="heart"></span><b>Kỉ niệm</b></button>
     </nav>
+    <button type="button" class="fab-float" id="btnAdd" aria-label="Check-in: ghim ngay chỗ đang đứng"><span data-icon="pinplus"></span><b>Check-in</b></button>
 
     <!-- Thẻ check-in nhanh -->
     <div class="glass quick-card" id="quickCard" hidden></div>
@@ -151,6 +144,22 @@
       <button type="button" class="lb-cap" id="lbCap"></button>
     </div>
 
+    <!-- Story tổng kết -->
+    <div class="story" id="story" hidden>
+      <div class="story-bars" id="storyBars"></div>
+      <div class="story-stage" id="storyStage">
+        <canvas id="storyCanvas" width="1080" height="1920"></canvas>
+        <div class="story-nav" id="storyNav"><button type="button" id="storyPrev" aria-label="Thẻ trước"></button><button type="button" id="storyNext" aria-label="Thẻ sau"></button></div>
+      </div>
+      <button type="button" class="story-close" id="storyClose" aria-label="Đóng"><span data-icon="x"></span></button>
+      <div class="story-acts"><button type="button" class="btn primary" id="storyShare"><span data-icon="upload"></span>Lưu / chia sẻ ảnh</button></div>
+      <div class="story-save" id="storySave" hidden>
+        <img alt="Ảnh tổng kết">
+        <p>Nhấn giữ ảnh rồi chọn “Lưu vào Ảnh” để chia sẻ.</p>
+        <button type="button" class="btn line" id="storySaveClose">Xong</button>
+      </div>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input type="file" id="fileImport" accept="application/json,.json" hidden>
     <datalist id="vnUnits"></datalist>
@@ -162,6 +171,7 @@
   <script src="js/geo.js"></script>
   <script src="js/db.js"></script>
   <script src="js/sync.js"></script>
+  <script src="js/story.js"></script>
   <script src="js/demo.js"></script>
   <script src="js/app.js"></script>
 </body>

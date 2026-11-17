@@ -4,22 +4,15 @@ Web app chạy trên điện thoại: bản đồ chữ S của hai đứa. Mỗ
 
 ## Dùng thế nào
 
-- **Nút Check-in ở giữa**: bấm một lần là lưu ngay vị trí và giờ hiện tại. Tên, ảnh, cảm nhận bổ sung sau.
-  - Đứng gần một nơi đã từng ghé (trong 100 m) thì app tự lấy tên nơi đó và nhắc lại lần trước: ngày, số tim, feedback.
-  - Nơi mới thì app tự tìm tên quán, địa chỉ, tỉnh thành khi có mạng.
-  - Thẻ nhỏ hiện ra sau khi check-in để chấm tim, thêm ảnh, bổ sung hoặc hoàn tác.
+- **Nút Check-in** (góc phải dưới): bấm một lần là ghim ngay chỗ đang đứng. Thẻ nhỏ hiện ra để chọn **cung** (hoặc tạo cung mới ngay tại đó), chấm tim, thêm ảnh. Tên, cảm nhận bổ sung sau bằng nút **Chi tiết**. Bấm giữ trên bản đồ hoặc chọn một kết quả tìm kiếm cũng ghim ngay như vậy.
+  - Đứng gần một nơi đã từng ghé (trong 100 m) thì app tự lấy tên nơi đó và nhắc lại lần trước.
 - **Cung đường**: mỗi chuyến phượt là một cung có tên.
-  - Trước khi đi bấm **Bắt đầu cung mới** và đặt tên. Từ đó mỗi lần check-in, điểm đó tự vào cung. Về tới nơi bấm **Kết thúc cung**.
-  - Chuyến đã đi rồi: tạo cung với “Từ ngày – Đến ngày”, app gom mọi check-in trong khoảng đó. App cũng tự gợi ý cung từ những ngày liền nhau có nhiều check-in.
-  - Trang tổng kết của cung: tổng km, số chặng (mỗi ngày một chặng), điểm dừng, ảnh; từng chặng liệt kê các điểm theo giờ kèm số km giữa hai điểm; xem trên bản đồ và **Phát lại**.
-  - Số km tính theo đường bộ (dịch vụ dẫn đường OSRM của OpenStreetMap), được lưu lại trong máy. Khi chưa có mạng, app tạm ước tính theo đường thẳng và ghi dấu ≈.
-- **Bản đồ**: mặc định vừa khung Việt Nam. Ghim gom theo quốc gia → tỉnh/thành → từng địa điểm khi phóng to.
-  - Đường của mỗi cung đi theo đường thật, mỗi cung một màu, có mũi tên chỉ hướng và số chặng. Chạm vào đường để mở tổng kết cung.
-  - Khi đang đi một cung, thanh nhỏ ở đáy bản đồ cho biết số km, số điểm, số chặng.
-  - Nút **Danh sách** mở sổ địa điểm kèm feedback của vùng đang xem, có bộ lọc (yêu thích, đáng quay lại, quán ăn, cà phê…).
-  - Nút tuỳ chọn (góc phải): kiểu bản đồ, bật/tắt đường đi, bắt đầu cung mới, ghim một nơi khác, ghi đường đi bằng GPS.
-- **Nhật ký**: lịch tháng, ngày có kỉ niệm được tô màu kèm số lượng. Bấm một ngày thì lịch thu lại còn một tuần và hiện kỉ niệm ngày đó bên dưới. Có nút thêm kỉ niệm cho một ngày cũ. Chuyển sang **Ảnh** để xem album theo tháng hoặc theo nơi.
-- **Tổng kết**: đã đi mấy trên 34 tỉnh thành, sổ đóng dấu theo miền, số liệu, phần dùng chung và sao lưu.
+  - **Bắt đầu cung mới** trước khi đi: mọi check-in sau đó tự vào cung. Về tới nơi bấm **Kết thúc cung**.
+  - **Thêm cung đã đi** cho chuyến cũ: đặt tên, chọn ngày đi – ngày về, rồi thêm các nơi đã đến: chọn ngày, gõ tên nơi (ví dụ “Mã Pí Lèng”) và bấm ＋, hoặc **Ghim trên bản đồ**. Check-in cũ chưa thuộc cung nào cũng thêm được vào cung.
+  - Trang tổng kết của cung: tổng km, số chặng (mỗi ngày một chặng), điểm dừng theo giờ kèm km giữa hai điểm, ảnh; nút **Thêm điểm**, **Trên bản đồ**, **Phát lại**, **Ảnh chia sẻ**.
+  - Số km tính theo đường bộ (OSRM của OpenStreetMap), lưu lại trong máy; chưa có mạng thì tạm ước tính theo đường thẳng và ghi dấu ≈.
+- **Bản đồ**: mặc định vừa khung Việt Nam. Ghim gom theo quốc gia → tỉnh/thành → từng địa điểm khi phóng to. Chỉ đường của các cung được vẽ (mỗi cung một màu); xem riêng một cung thì chỉ còn các điểm của cung, đánh số theo thứ tự đến, và đường tự vẽ ra. Thẻ ở đáy thu gọn sẵn, chạm tiêu đề để mở.
+- **Kỉ niệm**: thẻ **Tổng kết hành trình** mở story nhiều trang (số km so với chiều dài chữ S, các tỉnh đã đến trên bản đồ, cung dài nhất, những nơi được thả tim nhiều nhất…), mỗi trang **lưu / chia sẻ** thành ảnh dọc 1080×1920. Bên dưới là lịch tháng (bấm một ngày để xem ngày đó) và album ảnh. Nút bánh răng mở **Cài đặt**: dùng chung, sao lưu, dữ liệu mẫu.
 
 ## Dùng chung hai người
 
@@ -44,14 +37,14 @@ Dữ liệu luôn nằm trong máy (dùng được khi mất mạng). Khi bật 
 
 4. Bấm biểu tượng bánh răng → **Project settings**. Ở mục **Your apps**, bấm biểu tượng `</>` (Web), đặt tên, bấm Register app.
 5. Sao chép cả đoạn `firebaseConfig = { … }`.
-6. Trong app: **Tổng kết → Thiết lập dùng chung → Mình tạo mới**. Nhập tên, dán đoạn `firebaseConfig`, bấm **Tạo không gian chung**.
+6. Trong app: **Kỉ niệm → Cài đặt (bánh răng) → Thiết lập dùng chung → Mình tạo mới**. Nhập tên, dán đoạn `firebaseConfig`, bấm **Tạo không gian chung**.
 7. Bấm **Sao chép mã mời** và gửi cho người kia.
 
 Tên các nút trong Firebase console có thể khác đôi chút theo thời gian.
 
 ### Người thứ hai
 
-Mở app → **Tổng kết → Thiết lập dùng chung → Mình có mã mời** → nhập tên, dán mã mời → **Tham gia**.
+Mở app → **Kỉ niệm → Cài đặt → Thiết lập dùng chung → Mình có mã mời** → nhập tên, dán mã mời → **Tham gia**.
 
 Nếu cài app ra màn hình chính iPhone thì làm các bước này trong app đã cài, vì app đã cài có bộ nhớ riêng, tách khỏi Safari.
 
@@ -80,7 +73,8 @@ python3 -m http.server 8080
 ```
 index.html            khung giao diện
 css/style.css         giao diện glass (hồng, trắng, be)
-js/app.js             bản đồ, check-in, cung đường, nhật ký, tổng kết
+js/app.js             bản đồ, check-in, cung đường, kỉ niệm, cài đặt
+js/story.js           story tổng kết vẽ bằng canvas, lưu/chia sẻ ảnh
 js/sync.js            dùng chung qua Firebase (Cloud Firestore)
 js/geo.js             34 tỉnh thành, quy đổi tên cũ, nhận diện tỉnh/quốc gia
 js/vn-shape.js        đường viền Việt Nam (Natural Earth, dữ liệu công cộng)
@@ -94,4 +88,4 @@ vendor/firebase/      Firebase JS SDK 10.14.1 (chỉ tải khi bật dùng chung
 
 Tỉnh/thành theo đơn vị hành chính sau sáp nhập 1/7/2025 (34 tỉnh thành); tên tỉnh cũ được tự quy về đơn vị mới.
 
-Dịch vụ dùng: ô bản đồ © OpenStreetMap contributors, © CARTO, ảnh vệ tinh © Esri; tìm kiếm và lấy địa chỉ qua Nominatim (OpenStreetMap); đường đi theo đường bộ qua máy chủ demo của OSRM (router.project-osrm.org).
+Dịch vụ dùng: ô bản đồ © OpenStreetMap contributors (tile.openstreetmap.org), ảnh vệ tinh © Esri; tìm kiếm và lấy địa chỉ qua Nominatim (OpenStreetMap); đường đi theo đường bộ qua máy chủ demo của OSRM (router.project-osrm.org).

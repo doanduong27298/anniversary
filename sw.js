@@ -1,14 +1,14 @@
 /* Service worker: cho app mở được khi mất mạng và lưu tạm ô bản đồ đã xem. */
-const VERSION = 'oj-v4';
+const VERSION = 'oj-v5';
 const SHELL = [
   './', 'index.html', 'css/style.css',
-  'js/icons.js', 'js/vn-shape.js', 'js/geo.js', 'js/db.js', 'js/sync.js', 'js/demo.js', 'js/app.js',
+  'js/icons.js', 'js/vn-shape.js', 'js/geo.js', 'js/db.js', 'js/sync.js', 'js/story.js', 'js/demo.js', 'js/app.js',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'manifest.webmanifest'
 ];
-const TILE_CACHE = 'dch-tiles';
+const TILE_CACHE = 'oj-tiles-2'; // bộ cũ chứa ô CARTO báo lỗi thiếu khoá, bỏ đi
 const TILE_MAX = 1500;
-const TILE_HOSTS = ['basemaps.cartocdn.com', 'tile.openstreetmap.org', 'server.arcgisonline.com'];
+const TILE_HOSTS = ['tile.openstreetmap.org', 'server.arcgisonline.com'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
